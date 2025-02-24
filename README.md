@@ -1,6 +1,5 @@
-# MLPerf_per_Watt
-<<<<<<< HEAD
-=======
+# LLM-Inference-Power
+
 ## Accelerators
 |Accelerator         | FP32 | RT32 | FP16 | BF16 | FP8 | INT8 | TDP  |
 |--------------------|------|------|------|------|-----|------|------|
@@ -14,4 +13,3 @@
 |Habana Gaudi-1      |      |      |      |  150 |     |      |      |
 |AMD Versal VCK5000  |  12  |      |      |      |     |  145 | 150W |
 |AMD Alveo V70       |      |      |      |  202 |     |  404 |  75W |
->>>>>>> e8fa3a3a0e81fcdf79b74b8116d046111f37b053
