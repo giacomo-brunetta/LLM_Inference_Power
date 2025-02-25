@@ -1,3 +1,23 @@
 Model Name,FrameWork,Hardware type,Count,Precision,Batch Size,In tokens,Out tokens,TTFT,Latency
 meta-llama/Llama-2-7b-hf,Transformers,NVIDIA A100-PCIE-40GB,1,torch.float16,32,128,128,369.8715409263969,6.422036296920851
-meta-llama/Llama-2-7b-hf,Transformers,NVIDIA A100-PCIE-40GB,1,torch.float16,32,128,128,372.19762592576444,6.061966377776116
+meta-llama/Llama-2-7b-hf,Transformers,NVIDIA A100-PCIE-40GB,1,torch.float16,32,128,128,372.1976259257645,6.061966377776116
+meta-llama/Llama-2-7b-hf,Transformers,Intel(R) Data Center GPU Max 1550,1,torch.float16,1,128,128,108.69158897548914,4.766264362959191
+meta-llama/Llama-2-7b-hf,Transformers,Intel(R) Data Center GPU Max 1550,1,torch.float16,1,256,256,46.60155298188329,9.193699638010004
+meta-llama/Llama-2-7b-hf,Transformers,Intel(R) Data Center GPU Max 1550,1,torch.float16,2,128,128,49.269834998995066,4.838553495006636
+meta-llama/Llama-2-7b-hf,Transformers,Intel(R) Data Center GPU Max 1550,1,torch.float16,2,256,256,65.15566597227007,9.159094535978513
+meta-llama/Llama-2-7b-hf,Transformers,Intel(R) Data Center GPU Max 1550,1,torch.float16,4,128,128,65.54521806538105,4.839971234090626
+meta-llama/Llama-2-7b-hf,Transformers,Intel(R) Data Center GPU Max 1550,1,torch.float16,1,128,128,106.62918095476924,1.5363604850135744
+meta-llama/Llama-2-7b-hf,Transformers,Intel(R) Data Center GPU Max 1550,1,torch.float16,1,128,128,107.99694200977684,4.78224958491046
+meta-llama/Llama-2-7b-hf,Transformers,Intel(R) Data Center GPU Max 1550,1,torch.float16,2,128,128,46.174444956704974,4.772146624978632
+meta-llama/Llama-2-7b-hf,Transformers,Intel(R) Data Center GPU Max 1550,1,torch.float16,4,128,128,65.34917303360999,4.609210786991753
+meta-llama/Llama-2-7b-hf,Transformers,Intel(R) Data Center GPU Max 1550,1,torch.float16,1,128,128,108.70264505501837,4.76380839094054
+meta-llama/Llama-2-7b-hf,Transformers,Intel(R) Data Center GPU Max 1550,1,torch.float16,2,128,128,47.995220054872334,4.781540508032776
+meta-llama/Llama-2-7b-hf,Transformers,Intel(R) Data Center GPU Max 1550,1,torch.float16,2,128,128,46.3226999854669,4.830915551981889
+meta-llama/Llama-2-7b-hf,Transformers,Intel(R) Data Center GPU Max 1550,1,torch.float16,4,128,128,64.99844195786864,4.885899366112426
+meta-llama/Llama-2-7b-hf,Transformers,Intel(R) Data Center GPU Max 1550,1,torch.float16,4,128,128,64.79570700321347,4.894466404919513
+meta-llama/Llama-2-7b-hf,Transformers,Intel(R) Data Center GPU Max 1550,1,torch.float16,4,128,128,65.34112093504518,4.909858781960793
+meta-llama/Llama-2-7b-hf,Transformers,Intel(R) Data Center GPU Max 1550,1,torch.float32,6,128,128,466.46294102538377,7.718874722952023
+meta-llama/Llama-2-7b-hf,Transformers,Intel(R) Data Center GPU Max 1550,1,torch.float32,16,128,128,1179.5936750713736,9.731355040916242
+meta-llama/Llama-2-7b-hf,Transformers,Intel(R) Data Center GPU Max 1550,1,torch.float32,16,128,128,1186.081289080903,9.822792886989191
+meta-llama/Llama-2-7b-hf,Transformers,Intel(R) Data Center GPU Max 1550,1,torch.bfloat16,16,128,128,167.98772499896586,5.8276696760440245
+meta-llama/Llama-2-7b-hf,Transformers,Intel(R) Data Center GPU Max 1550,1,torch.bfloat16,24,128,128,255.771821946837,7.020785919041373
