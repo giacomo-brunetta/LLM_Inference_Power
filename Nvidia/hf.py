@@ -2,7 +2,7 @@ import torch
 import time
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from power_utils import power_profile_task
-from utils import parse_arguments, save_results
+from utils import parse_arguments, save_results, save_results_with_power
 
 args = parse_arguments()
 
@@ -35,6 +35,10 @@ if num_devices > 1: # wrap with DataParallel
     device_ids = list(range(num_devices))
     model = torch.nn.DataParallel(model, device_ids=device_ids)
     print("Using Dataparallel")
+    if args.batch_size < num_devices:
+        print(f"There are {num_devices}, but the batch size is only {args.batch_size}")
+        print("Run Interrupted.")
+        exit()
 else:
     device = torch.device('cuda:0')
 
@@ -62,36 +66,59 @@ with torch.no_grad():
         print("Measuring Throughput")
         torch.cuda.synchronize()
         start_time = time.perf_counter()
-
-        # generate one sequence
-        # TODO does not work for DataParallel
-        generate_ids = model.generate(input_ids,
-                                        max_new_tokens=args.out_len,
-                                        num_beams=1,
-                                        early_stopping=False)
+        
+        if isinstance(model, torch.nn.DataParallel):
+            print("WARNING: DataParallel is enabled, but single GPU is used")
+            generate_ids = model.module.generate(input_ids,
+                                            max_new_tokens=args.out_len,
+                                            num_beams=1,
+                                            early_stopping=False)
+        else:
+            generate_ids = model.generate(input_ids,
+                                max_new_tokens=args.out_len,
+                                num_beams=1,
+                                early_stopping=False)
 
         torch.cuda.synchronize()
+        
         latency = (time.perf_counter() - start_time)
+        
+        input_ids.to(device)
 
         if args.power:
             print("Measuring Power")
             def f():
                 return model(input_ids)
             
-            power_profile_task(f, 60, 0.1)
+            power_avgs, power_peaks, energies = power_profile_task(f, 60, 0.1)
 
         # Print results
         print("\n---------------Results----------------------")
         print(f"Latency: {latency:.3f} s")
         print(f"TTFT: {ttft*1000:.3f} ms")
 
-save_results(model_name,
-             'Transformers',
-             torch.cuda.get_device_name(torch.cuda.current_device()),
-             args.num_gpus,
-             dtype,
-             args.batch_size,
-             args.in_len,
-             args.out_len,
-             ttft,
-             latency)
+if args.power:
+    save_results_with_power(model_name,
+                'Transformers',
+                torch.cuda.get_device_name(torch.cuda.current_device()),
+                args.num_gpus,
+                dtype,
+                args.batch_size,
+                args.in_len,
+                args.out_len,
+                ttft,
+                latency,
+                power_avgs[0],
+                power_peaks[0],
+                energies[0])
+else:
+    save_results(model_name,
+                'Transformers',
+                torch.cuda.get_device_name(torch.cuda.current_device()),
+                args.num_gpus,
+                dtype,
+                args.batch_size,
+                args.in_len,
+                args.out_len,
+                ttft,
+                latency)
