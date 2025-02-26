@@ -31,6 +31,8 @@ big_models=(
 
 for model in "${small_models[@]}"; do
     for seq_length in 128 256 512 1024 2048; do
-        python3 vLLM.py --batch_size 1 --seq_len $seq_length --model_name $model
+        for batch_size in 1 2 4 8 16; do
+            python3 hf.py --batch_size $batch_size --in_len $seq_length --out_len $seq_length --model_name $model --dtype bfloat16 --power
+        done
     done
 done
