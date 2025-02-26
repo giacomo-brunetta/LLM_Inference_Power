@@ -1,5 +1,6 @@
 import torch
 import time
+from power_utils import profile_power
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import intel_extension_for_pytorch as ipex
 from utils import parse_arguments, save_results
@@ -70,6 +71,13 @@ with torch.no_grad():
                                     early_stopping=False)
         torch.xpu.synchronize()
         latency = (time.perf_counter() - start_time)
+
+        if args.power:
+            print("Measuring Power")
+            def f():
+                return model(input_ids)
+            
+            power_profile_task(f, 60, 0.1)
 
 # Print results
 print("\nResults:")
