@@ -1,41 +1,39 @@
 import time
 from vllm import LLM, SamplingParams
 import numpy as np
-import pandas as pd
-import os
-import argparse
-import pandas as pd
+from utils import parse_arguments, save_results_with_power,save_results
+from power_utils import power_profile_task
+import torch
 
 # Parse command-line arguments
-parser = argparse.ArgumentParser(description="Run inference.")
-parser.add_argument("--dtype", type=str, choices=["float32", "float16"], default="float16", help="Data type for computation")
-parser.add_argument("--batch_size", type=int, default=1, help="Batch size")
-parser.add_argument("--in_len", type=int, default=512, help="In length")
-parser.add_argument("--out_len", type=int, default=512, help="Out length")
-parser.add_argument("--model_name", type=str, default = "meta-llama/Llama-2-7b-hf", help="Model")
-args = parser.parse_args()
+args = parse_arguments()
+torch._dynamo.config.suppress_errors = True
 
 llm = LLM(
     model=args.model_name,
-    tensor_parallel_size=args.batch_size,
+    tensor_parallel_size=args.num_gpus,
     trust_remote_code=True,
     dtype=args.dtype,
-    device='cuda'
+    device='cuda',
 )
 
 batch_size = args.batch_size
 input_len = args.in_len
 out_len = args.out_len
 
-sampling_params = SamplingParams(
-    n=1,
+sequence = SamplingParams(
+    n=args.batch_size,
     temperature= 1.0,
     top_p=1.0,
     ignore_eos=True,
     max_tokens=out_len,
 )
- 
-print(sampling_params)
+
+first_token = SamplingParams(
+    n=args.batch_size,
+    max_tokens=1,
+)
+
 dummy_prompt_token_ids = np.random.randint(10000, size=(batch_size,input_len))
 
 dummy_inputs = [{
@@ -43,38 +41,65 @@ dummy_inputs = [{
 } for batch in dummy_prompt_token_ids.tolist()]
 
 print("Warming up...")
-llm.generate(dummy_inputs, sampling_params=sampling_params, use_tqdm=False)
+llm.generate(dummy_inputs, sampling_params=first_token, use_tqdm=False)
 
+print("Measurng TTFT")
 start_time = time.perf_counter()
-llm.generate(dummy_inputs, sampling_params=sampling_params, use_tqdm=False)
+llm.generate(dummy_inputs, sampling_params=first_token, use_tqdm=False)
 end_time = time.perf_counter()
-latency = end_time - start_time
+ttft = end_time - start_time
 
-total_tokens = batch_size*(input_len + out_len)
+print("Measuring Latency")
 
-print("\nResults:")
-print(f"Latency: {latency:.3f} s")
+if args.power:
+    def f():
+        llm.generate(dummy_inputs, sampling_params=sequence, use_tqdm=False)
 
-data = {
-    'Model Name': [args.model_name],
-    'FrameWork': ['vLLM'],
-    'Precision': [args.dtype],
-    'Batch Size': [args.batch_size],
-    'In tok': [args.in_len],
-    'Out tok': [args.out_len],
-    'TTFT (ms)': ['N/A'],  # Convert TTFT to ms
-    'Latency' : [latency]
-}
+    sampling_frequency = 0.5 #seconds
 
-# Create the DataFrame
-new_data_df = pd.DataFrame(data)
+    latency, power_avgs, power_peaks, energies = power_profile_task(f, sampling_frequency, create_plot=False)
 
-file_path = 'results.csv'
+    active_power_average = sum([power_avgs[i] for i in range(args.num_gpus)])
+    total_power_average = sum(power_avgs)
 
-if os.path.exists(file_path):
-    df = pd.read_csv(file_path)
-    df = pd.concat([df, new_data_df], ignore_index=True)
+    active_power_peak = sum([power_peaks[i] for i in range(args.num_gpus)])
+    total_power_peak = sum(power_peaks)
+
+    active_energy = sum([energies[i] for i in range(args.num_gpus)])
+    total_energy = sum(energies)
+
+    save_results_with_power(
+        args.model_name,
+        'vLLM',
+        torch.cuda.get_device_name(torch.cuda.current_device()),
+        args.num_gpus,
+        args.dtype,
+        args.batch_size,
+        args.in_len,
+        args.out_len,
+        ttft,
+        latency,
+        total_power_average,
+        active_power_average,
+        total_power_peak,
+        active_power_peak,
+        total_energy,
+        active_energy
+    )
 else:
-    df = new_data_df
+    start_time = time.perf_counter()
+    llm.generate(dummy_inputs, sampling_params=sequence, use_tqdm=False)
+    end_time = time.perf_counter()
+    latency = end_time - start_time
 
-df.to_csv(file_path, index=False)
+    save_results(
+                args.model_name,
+                'vLLM',
+                torch.cuda.get_device_name(torch.cuda.current_device()),
+                args.num_gpus,
+                args.dtype,
+                args.batch_size,
+                args.in_len,
+                args.out_len,
+                ttft,
+                latency)

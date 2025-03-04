@@ -11,6 +11,7 @@ import os
 import time
 import torch
 import numpy as np
+import matplotlib.pyplot as plt
 
 from py3nvml.py3nvml import nvmlDeviceGetPowerUsage,  \
     nvmlDeviceGetCount,  \
@@ -78,26 +79,31 @@ class gpuPowerProbe(object):
         self.alive.value = 0
         self.process.join()
 
-def power_profile_task(task, duration, interval):
-    start_time = time.perf_counter()
-
+def power_profile_task(task, interval, create_plot = False):
+    inference_powers = []
+    inference_powers_time = []
+    power_avgs = []
+    power_peaks = []
+    energies = []
     power_profiles = []
+
     for id in range(torch.cuda.device_count()):
         power_profiles.append(gpuPowerProbe(interval=interval, gpu_id=id))
         power_profiles[id].start()
 
-    while time.perf_counter() - start_time < duration:
-        task()
-    
-    print("\n----------------Power-----------------------")
-    inference_powers = []
-    inference_powers_time = []
+    start_time = time.perf_counter()
+    task()
+    end_time = time.perf_counter()
+
+    latency = end_time - start_time
+
     for power_profile in power_profiles:
         power, times = power_profile.stop()
         inference_powers.append(power)
         inference_powers_time.append(times)
         power_profile.destroy()
 
+    print("\n----------------Power-----------------------")
     for id in range(torch.cuda.device_count()):
         print(f"GPU {id}:")
         power = np.array(inference_powers[id]) / 1000  # to Watt
@@ -106,6 +112,21 @@ def power_profile_task(task, duration, interval):
         peak_power = np.max(power)
         energy = np.sum(power*times)
 
+        power_avgs.append(avg_power)
+        power_peaks.append(peak_power)
+        energies.append(energy)
+
         print(f"    Power avg : {avg_power :.3f} W")
         print(f"    Power peak: {peak_power :.3f} W")
         print(f"    Energy    : {energy :.3f} J")
+        if create_plot:
+            plt.plot(np.cumsum(inference_powers_time[id]), power, label=f'GPU {id}')
+
+    if create_plot:
+        plt.title("Power consumption")
+        plt.legend()
+        plt.xlabel(f'Time ({interval} sec intervals)')
+        plt.ylabel('Power Consumption (W)')
+        plt.savefig('gpu_power_plot.png')
+
+    return latency, power_avgs, power_peaks, energies
