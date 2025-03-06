@@ -1,37 +1,108 @@
 import subprocess
 import time
 import re
+import threading
+import numpy as np
+import matplotlib.pyploy as plt
 
-def get_gpu_power(device_id, tile):
+def get_gpu_power(device_id):
     try:
         result = subprocess.run(
-            ["xpu-smi", "stats", f"-d", str(device_id)],
+            ["xpu-smi", "stats", f"-d{device_id}"],
             capture_output=True,
             text=True
         )
         output = result.stdout
-        
-        # Regex to extract GPU Power for the specified tile
-        power_pattern = rf"GPU Power \(W\)\s+\| Tile {tile}: (\d+)"
+
+        # Regex pattern to extract GPU power for Tile 0 and Tile 1
+        power_pattern = r"GPU Power \(W\)\s*\|\s*Tile 0:\s*(\d+);\s*Tile 1:\s*(\d+)"
         match = re.search(power_pattern, output)
+
         if match:
-            return int(match.group(1))
+            return int(match.group(1)), int(match.group(2))
         else:
-            return None
+            return None, None
     except Exception as e:
         print(f"Error: {e}")
-        return None
+        return None, None
+    
+def power_probe(device_id, stop_event, tile1_pow, tile2_pow, intervals):
+    while not stop_event.is_set():
+        begin = time.time()
+        pow1, pow2 = get_gpu_power(device_id)
+        interval = time.time() - begin
+        tile1_pow.append(pow1)
+        tile2_pow.append(pow2)
+        intervals.append(interval)
+        time.sleep(0.1)  # Sampling interval
 
-def power_profile_task(func, duration, interval, device_id=0, tile=0):
+    return tile1_pow, tile2_pow, intervals
+
+def power_profile_task(func, duration, total_xpus):
+    inference_powers = []
+    inference_powers_time = []
+    power_probing_threads = []
+    
+    stop = threading.Event()  # Create the stopping event
+
+    # Create and start power probing threads
+    for xpu in range(total_xpus):
+        tile1_pow = []
+        tile2_pow = []
+        intervals = []
+        inference_powers.append((tile1_pow, tile2_pow))
+        inference_powers_time.append([intervals])
+        
+        thread = threading.Thread(target=power_probe, args=(xpu, stop, tile1_pow, tile2_pow, intervals))
+        power_probing_threads.append(thread)
+        thread.start()
+
     start_time = time.time()
-    power_readings = []
-    
+    latency = None
+
     while time.time() - start_time < duration:
-        func()  # Run the provided function
-        power = get_gpu_power(device_id, tile)
-        if power is not None:
-            power_readings.append(power)
-        time.sleep(interval)
+        func()  # Run the provided function for duration seconds
+
+        if latency is None:
+            latency = time.time() - start_time
+
+    stop.set()  # Stop power probing threads
+
+    for thread in power_probing_threads:
+        thread.join()
+
+    power_avgs = []
+    power_peaks = []
+    energies = []
+
+    print("\n----------------Power-----------------------")
+    for id in range(total_xpus):
+
+        print(f"GPU {id}:")
+        power1 = np.array(inference_powers[id*2])
+        power2 = np.array(inference_powers[id*2 +1])
+        times = np.array(inference_powers_time[id])
+
+        avg_power1 = np.mean(power1)
+        peak_power1 = np.max(power1)
+        energy1 = np.sum(power1*times)
+
+        avg_power2 = np.mean(power2)
+        peak_power2 = np.max(power2)
+        energy2 = np.sum(power2*times)
+
+        power_avgs.append(avg_power1, avg_power2)
+        power_peaks.append(peak_power1, peak_power2)
+        energies.append(energy1, energy2)
+
+        print("  Tile 0:")
+        print(f"    Power avg : {avg_power1 :.3f} W")
+        print(f"    Power peak: {peak_power1 :.3f} W")
+        print(f"    Energy    : {energy1 :.3f} J")
+
+        print("  Tile 1:")
+        print(f"    Power avg : {avg_power2 :.3f} W")
+        print(f"    Power peak: {peak_power2 :.3f} W")
+        print(f"    Energy    : {energy2 :.3f} J")
     
-    avg_power = sum(power_readings) / len(power_readings) if power_readings else 0
-    print(f"Average Power Consumption: {avg_power:.2f} W")
+    return latency, power_avgs, power_peaks, energies

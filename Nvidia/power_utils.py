@@ -79,7 +79,7 @@ class gpuPowerProbe(object):
         self.alive.value = 0
         self.process.join()
 
-def power_profile_task(task, interval, create_plot = False):
+def power_profile_task(task, interval, active_gpus, total_gpus, create_plot = False):
     inference_powers = []
     inference_powers_time = []
     power_avgs = []
@@ -87,7 +87,7 @@ def power_profile_task(task, interval, create_plot = False):
     energies = []
     power_profiles = []
 
-    for id in range(torch.cuda.device_count()):
+    for id in range(total_gpus):
         power_profiles.append(gpuPowerProbe(interval=interval, gpu_id=id))
         power_profiles[id].start()
 
@@ -104,7 +104,7 @@ def power_profile_task(task, interval, create_plot = False):
         power_profile.destroy()
 
     print("\n----------------Power-----------------------")
-    for id in range(torch.cuda.device_count()):
+    for id in range(total_gpus):
         print(f"GPU {id}:")
         power = np.array(inference_powers[id]) / 1000  # to Watt
         times = np.array(inference_powers_time[id])

@@ -37,3 +37,54 @@ def save_results(model_name, framework, hw, num, dtype, batch_size, in_len, out_
         df = new_data_df
 
     df.to_csv(file_path, index=False)
+
+def save_results_with_power(model_name, framework, hw, num, dtype, batch_size, in_len, out_len, ttft, latency, power_avg, active_power_avg, power_peak, active_power_peak, energy, active_energy):
+    data = {
+        'Model Name': [model_name],
+        'FrameWork': [framework],
+        'Hardware type': [hw],
+        'Count': [num],
+        'Precision': [dtype],
+        'Batch Size': [batch_size],
+        'In tokens': [in_len],
+        'Out tokens': [out_len],
+        'TTFT': [ttft * 1000],  # Convert TTFT to ms
+        'Latency': [latency],
+        'Power Avg': [power_avg],
+        'Power Avg (Active)': [active_power_avg],
+        'Power Peak': [power_peak],
+        'Power Peak (Active)': [active_power_peak],
+        'Energy': [energy],
+        'Energy (Active)': [active_energy]
+    }
+
+    new_data_df = pd.DataFrame(data)
+    file_path = '../Results/results.csv'
+
+    if os.path.exists(file_path):
+        df = pd.read_csv(file_path)
+        df = pd.concat([df, new_data_df], ignore_index=True)
+    else:
+        df = new_data_df
+
+    df.to_csv(file_path, index=False)
+
+def print_args(args, multi_test=False):
+    if multi_test:
+        print("RUNNING MULTIPLE TESTS FOR:")
+    else:
+        print("RUNNING TEST FOR:")
+    print()
+    print(f"Model: {args.model_name}")
+    print(f"Precision: {args.dtype}")
+    print(f"num_gpus: {args.num_gpus}")
+
+    if multi_test:
+        print("In/Out lenght and batch size parameters are ignored!")
+    else:
+        print(f"In lenght: {args.dtype}")
+        print(f"Out Lenght: {args.dtype}")
+        print(f"Batch size: {args.dtype}")
+
+    if args.power:
+        print("POWER MEASUREMENT IS ACTIVE")

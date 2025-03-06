@@ -4,7 +4,7 @@ import os
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Run inference.")
-    parser.add_argument("--dtype", type=str, default="float16", help="Data type for computation")
+    parser.add_argument("--dtype", type=str, default="default", help="Data type for computation")
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size")
     parser.add_argument("--in_len", type=int, default=128, help="In length")
     parser.add_argument("--out_len", type=int, default=128, help="Out length")
@@ -12,6 +12,26 @@ def parse_arguments():
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-2-7b-hf", help="Model")
     parser.add_argument("--power", action='store_true', help="Measure Power")
     return parser.parse_args()
+
+def print_args(args, multi_test=False):
+    if multi_test:
+        print("RUNNING MULTIPLE TESTS FOR:")
+    else:
+        print("RUNNING TEST FOR:")
+    print()
+    print(f"Model: {args.model_name}")
+    print(f"Precision: {args.dtype}")
+    print(f"num_gpus: {args.num_gpus}")
+
+    if multi_test:
+        print("In/Out lenght and batch size parameters are ignored!")
+    else:
+        print(f"In lenght: {args.dtype}")
+        print(f"Out Lenght: {args.dtype}")
+        print(f"Batch size: {args.dtype}")
+
+    if args.power:
+        print("POWER MEASUREMENT IS ACTIVE")
 
 def save_results(model_name, framework, hw, num, dtype, batch_size, in_len, out_len, ttft, latency):
     data = {

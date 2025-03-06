@@ -1,11 +1,12 @@
 import torch
 import time
-from power_utils import profile_power
+from power_utils import power_profile_task
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import intel_extension_for_pytorch as ipex
-from utils import parse_arguments, save_results
+from utils import parse_arguments, save_results, save_results_with_power, print_args
 
 args = parse_arguments()
+print_args(args, multi_test=True)
 
 # Map dtype argument to PyTorch dtype
 dtype_map = {
@@ -28,11 +29,11 @@ model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=dtype)
 device = "xpu"
 model = model.to(device)
 
-# Determine the number of available XPU devices
-num_devices = args.num_gpus
+total_xpus = 4 # hardcoded, might fix in the future
+active_tiles = args.num_gpus
 
-if num_devices > 1: # wrap with DataParallel
-    device_ids = list(range(num_devices))
+if active_tiles > 1: # wrap with DataParallel
+    device_ids = list(range(active_tiles))
     model = torch.nn.DataParallel(model, device_ids=device_ids)
     print("Using Dataparallel")
 
@@ -43,54 +44,91 @@ model = ipex.optimize(model, dtype=dtype)
 model.eval()
 model.to(device)
 
-input_ids = torch.randint(low=0, high=model.config.vocab_size, size=(args.batch_size, args.in_len))
-input_ids = input_ids.to(device)
+for batch_size in [1, 2, 4, 8, 16]:
+    for len in [128, 256, 512, 1024, 2048]:
 
-assert input_ids.shape[0] == args.batch_size and input_ids.shape[1] == args.in_len
+        in_len = len
+        out_len = len
 
-with torch.no_grad():
-    with torch.amp.autocast('xpu', enabled=True, dtype=dtype):
-        print("Warming up ...")
-        # Warm-up
-        output = model(input_ids)
-        print("Latency Test...")
-        # Measure Time to First Token (TTFT)
-        torch.xpu.synchronize()
-        start_time = time.perf_counter()
-        output = model(input_ids)
-        torch.xpu.synchronize()
-        ttft = (time.perf_counter() - start_time)
+        input_ids = torch.randint(low=0, high=model.config.vocab_size, size=(batch_size, in_len))
+        input_ids = input_ids.to(device)
 
-        # Measure time to generate new tokens
-        torch.xpu.synchronize()
-        start_time = time.perf_counter()
-        # Generate
-        generate_ids = model.generate(input_ids,
-                                    max_new_tokens=args.out_len,
-                                    num_beams=1,
-                                    early_stopping=False)
-        torch.xpu.synchronize()
-        latency = (time.perf_counter() - start_time)
+        with torch.no_grad():
+            with torch.amp.autocast('xpu', enabled=True, dtype=dtype):
+                print("Warming up ...")
+                # Warm-up
+                output = model(input_ids)
+                print("Latency Test...")
+                # Measure Time to First Token (TTFT)
+                torch.xpu.synchronize()
+                start_time = time.perf_counter()
+                output = model(input_ids)
+                torch.xpu.synchronize()
+                ttft = (time.perf_counter() - start_time)
 
-        if args.power:
-            print("Measuring Power")
-            def f():
-                return model(input_ids)
-            
-            power_profile_task(f, 60, 0.1)
+                if args.power:
+                    print("Measuring Power")
+                    def f():
+                        # Generate
+                        generate_ids = model.generate(input_ids,
+                                            max_new_tokens=out_len,
+                                            num_beams=1,
+                                            early_stopping=False)
+                    
+                    latency, power_avgs, power_peaks, energies = power_profile_task(f, 60, total_xpus)
 
-# Print results
-print("\nResults:")
-print(f"Latency: {latency:.3f} s")
-print(f"Average TTFT: {ttft*1000:.3f} ms")
+                    active_power_average = sum([power_avgs[i] for i in range(active_tiles)])
+                    total_power_average = sum(power_avgs)
 
-save_results(model_name,
-             'Transformers',
-             torch.xpu.get_device_name(torch.xpu.current_device()),
-             args.num_gpus,
-             dtype,
-             args.batch_size,
-             args.in_len,
-             args.out_len,
-             ttft,
-             latency)
+                    active_power_peak = sum([power_peaks[i] for i in range(active_tiles)])
+                    total_power_peak = sum(power_peaks)
+
+                    active_energy = sum([energies[i] for i in range(active_tiles)])
+                    total_energy = sum(energies)
+
+                    save_results_with_power(
+                        model_name,
+                        'Transformers',
+                        torch.cuda.get_device_name(torch.cuda.current_device()),
+                        active_tiles,
+                        dtype,
+                        batch_size,
+                        in_len,
+                        out_len,
+                        ttft,
+                        latency,
+                        total_power_average,
+                        active_power_average,
+                        total_power_peak,
+                        active_power_peak,
+                        total_energy,
+                        active_energy
+                    )
+
+                else:
+                    # Measure time to generate new tokens
+                    torch.xpu.synchronize()
+                    start_time = time.perf_counter()
+                    # Generate
+                    generate_ids = model.generate(input_ids,
+                                                max_new_tokens=out_len,
+                                                num_beams=1,
+                                                early_stopping=False)
+                    torch.xpu.synchronize()
+                    latency = (time.perf_counter() - start_time)
+
+                    # Print results
+                    print("\nResults:")
+                    print(f"Latency: {latency:.3f} s")
+                    print(f"Average TTFT: {ttft*1000:.3f} ms")
+
+                    save_results(model_name,
+                                'Transformers',
+                                torch.xpu.get_device_name(torch.xpu.current_device()),
+                                active_tiles,
+                                dtype,
+                                batch_size,
+                                in_len,
+                                out_len,
+                                ttft,
+                                latency)
