@@ -79,7 +79,7 @@ class gpuPowerProbe(object):
         self.alive.value = 0
         self.process.join()
 
-def power_profile_task(task, interval, active_gpus, total_gpus, create_plot = False):
+def power_profile_task(task, interval, active_gpus, total_gpus, create_plot = False, rank = 0):
     inference_powers = []
     inference_powers_time = []
     power_avgs = []

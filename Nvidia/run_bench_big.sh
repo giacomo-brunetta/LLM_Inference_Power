@@ -9,6 +9,6 @@ big_models=(
 
 for model in "${big_models[@]}"; do
     for num_gpus in 4; do
-        python3 vLLM_multiple.py --model_name $model --num_gpus $num_gpus --power
+        python3 test_vLLM.py --model_name $model --num_gpus $num_gpus --power
     done
 done
