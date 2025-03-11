@@ -1,9 +1,9 @@
 import os
 import time
 import torch
-import torch.distributed as dist
+from torch.utils.data import DataLoader, Dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from accelerate import dispatch_model, infer_auto_device_map
+from accelerate import Accelerator
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -14,18 +14,10 @@ args = parse_arguments()
 
 create_plot = False
 
-# Initialize distributed environment
-rank = int(os.environ["RANK"])
-world_size = int(os.environ["WORLD_SIZE"])
-device = torch.device(f"cuda:{rank}")
-torch.cuda.set_device(device)
-dist.init_process_group(backend="nccl", rank=rank, world_size=world_size)
-
 # Map dtype argument to PyTorch dtype
 dtype_map = {
-    "float32": torch.float32,
-    "float16": torch.float16,
-    "bfloat16": torch.bfloat16
+    "fp16": torch.float16,
+    "bf16": torch.bfloat16
 }
 
 dtype = dtype_map[args.dtype]
@@ -33,69 +25,82 @@ dtype = dtype_map[args.dtype]
 total_gpus = torch.cuda.device_count()
 active_gpus = args.num_gpus
 
-try:
-    model_name = args.model_name
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+# Initialize the Accelerator
+accelerator = Accelerator(mixed_precision=args.dtype)
+device = accelerator.device
 
-    # Set pad_token to eos_token if not set
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
+# Load tokenizer
+model_name = args.model_name
+tokenizer = AutoTokenizer.from_pretrained(model_name)
 
+# Set pad_token to eos_token if not set
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(
+for batch_size in [1, 2, 4, 8, 16, 32, 64]:
+    for len in [128, 256, 512, 1024, 2048]:
+        
+        # Skip tests that are too big
+        if len >= 512 and batch_size > 8:
+            continue
+
+        input_len = len
+        out_len = len
+
+        # Define a simple dataset
+        class SimpleDataset(Dataset):
+            def __init__(self, tokenizer, model_name, input_len):
+                self.tokenizer = tokenizer
+                self.model_name = model_name
+                self.input_len = input_len
+                self.vocab_size = tokenizer.vocab_size
+
+            def __len__(self):
+                return 1000  # Example size, adjust as needed
+
+            def __getitem__(self, idx):
+                input_ids = torch.randint(low=0, high=self.vocab_size, size=(self.input_len,))
+                return input_ids
+
+        dataset = SimpleDataset(tokenizer, model_name, input_len)
+        dataloader = DataLoader(dataset, batch_size=8, shuffle=True)
+
+        # Initialize model
+        model = AutoModelForCausalLM.from_pretrained(
             model_name,
-            torch_dtype=dtype)
+            torch_dtype=dtype,
+        )
 
-    # Accelerate optimal allocation
-    device_map = infer_auto_device_map(model)
-    model = dispatch_model(model, device_map=device_map)
+        # Prepare model and dataloader with accelerator
+        model, dataloader = accelerator.prepare(model, dataloader)
 
-    model.eval()
+        # Set model to evaluation mode
+        model.eval()
 
-    for batch_size in [1, 2, 4, 8, 16, 32, 64]:
-        for len in [128, 256, 512, 1024, 2048]:
-            input_len = len
-            out_len = len
-
-            # generate random input according to batch size and in length
-            input_ids = torch.randint(low=0, high=model.config.vocab_size, size=(args.batch_size, args.in_len))
-
-            embedding_device = next(model.parameters()).device
-            input_ids = input_ids.to(embedding_device)
-
-            assert input_ids.shape[0] == args.batch_size and input_ids.shape[1] == args.in_len
-
-            if rank == 0:
-                print("Testing")
-                print(f"In lenght: {input_len}")
-                print(f"Out Lenght: {out_len}")
-                print(f"Batch size: {batch_size}")
+        for batch in dataloader:
+            input_ids = batch.to(device)
 
             with torch.no_grad():
-                with torch.amp.autocast(device_type=embedding_device.type, dtype=dtype):
-                    if rank == 0:
+                with torch.amp.autocast(device_type=device.type, dtype=dtype):
                         print("Warm up...")
-                    output = model(input_ids) # Generate one token
+                        output = model(input_ids) # Generate one token
 
-                    # Measure Time to First Token (TTFT)
-                    if rank == 0:
+                        # Measure Time to First Token (TTFT
                         print("Measuring TTFT")
-                    torch.cuda.synchronize()
-                    start_time = time.perf_counter()
+                        torch.cuda.synchronize()
+                        start_time = time.perf_counter()
 
-                    output = model(input_ids) # Generate one token
+                        output = model(input_ids) # Generate one token
 
-                    torch.cuda.synchronize()
-                    ttft = (time.perf_counter() - start_time)  
+                        torch.cuda.synchronize()
+                        ttft = (time.perf_counter() - start_time)  
 
-                    # Measure time to generate out_len new tokens
-                    if rank == 0:
+                        # Measure time to generate out_len new token
                         print("Measuring Throughput")
 
-                    sampling_frequency = 0.5 #seconds
+                        sampling_frequency = 0.5 #seconds
 
-                    if args.power:
-                        if rank == 0:
+                        if args.power:
                             inference_powers = []
                             inference_powers_time = []
                             power_avgs = []
@@ -107,18 +112,17 @@ try:
                                 power_profiles.append(gpuPowerProbe(interval=sampling_frequency, gpu_id=id))
                                 power_profiles[id].start()
 
-                        start_time = time.perf_counter()
-                        
-                        generate_ids = model.generate(input_ids,
-                                                max_new_tokens=args.out_len,
-                                                num_beams=1,
-                                                early_stopping=False)
+                            start_time = time.perf_counter()
+                            
+                            generate_ids = accelerator.unwrap_model(model).generate(input_ids,
+                                                    max_new_tokens=out_len,
+                                                    num_beams=1,
+                                                    early_stopping=False)
 
-                        end_time = time.perf_counter()
+                            end_time = time.perf_counter()
 
-                        latency = end_time - start_time
+                            latency = end_time - start_time
 
-                        if rank == 0:
                             for power_profile in power_profiles:
                                 power, times = power_profile.stop()
                                 inference_powers.append(power)
@@ -160,6 +164,8 @@ try:
                                 active_energy = sum([energies[i] for i in range(active_gpus)])
                                 total_energy = sum(energies)
 
+                                print("Saving Results")
+
                                 save_results_with_power(
                                     args.model_name,
                                     'Transformers',
@@ -178,30 +184,25 @@ try:
                                     total_energy,
                                     active_energy
                                 )
-                    else:
-                        start_time = time.perf_counter()
+                        else:
+                            start_time = time.perf_counter()
 
-                        generate_ids = model.generate(input_ids,
-                            max_new_tokens=args.out_len,
-                            num_beams=1,
-                            early_stopping=False)
-                        
-                        end_time = time.perf_counter()
+                            generate_ids = accelerator.unwrap_model(model).generate(input_ids,
+                                                    max_new_tokens=out_len,
+                                                    num_beams=1,
+                                                    early_stopping=False)
+                            
+                            end_time = time.perf_counter()
 
-                        latency = end_time - start_time
-                        if rank == 0:
+                            latency = end_time - start_time
                             save_results(
                                         args.model_name,
                                         'Transformers',
                                         torch.cuda.get_device_name(torch.cuda.current_device()),
                                         active_gpus,
-                                        args.dtype,
-                                        args.batch_size,
-                                        args.in_len,
-                                        args.out_len,
+                                        dtype,
+                                        batch_size,
+                                        input_len,
+                                        out_len,
                                         ttft,
                                         latency)
-
-finally:
-    # Ensure cleanup happens
-    dist.destroy_process_group()

@@ -4,7 +4,7 @@ import os
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Run inference.")
-    parser.add_argument("--dtype", type=str, default="float16", help="Data type for computation")
+    parser.add_argument("--dtype", type=str, default="fp16", help="Data type for computation")
     parser.add_argument("--num_gpus", type=int, default=1, help="Gpus to be used")
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-2-7b-hf", help="Model")
     parser.add_argument("--power", action='store_true', help="Measure Power")
@@ -12,7 +12,7 @@ def parse_arguments():
 
 def parse_arguments_single_run():
     parser = argparse.ArgumentParser(description="Run inference.")
-    parser.add_argument("--dtype", type=str, default="float16", help="Data type for computation")
+    parser.add_argument("--dtype", type=str, default="f16", help="Data type for computation")
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size")
     parser.add_argument("--in_len", type=int, default=128, help="In length")
     parser.add_argument("--out_len", type=int, default=128, help="Out length")

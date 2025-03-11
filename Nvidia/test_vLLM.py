@@ -47,6 +47,10 @@ else:
 
 for batch_size in [1, 2, 4, 8, 16, 32, 64]:
     for len in [128, 256, 512, 1024, 2048]:
+
+        if len >= 512 and batch_size > 8:
+            continue
+
         input_len = len
         out_len = len
 
