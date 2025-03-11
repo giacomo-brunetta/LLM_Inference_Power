@@ -36,7 +36,7 @@ def save_results(model_name, framework, hw, num, dtype, batch_size, in_len, out_
     }
 
     new_data_df = pd.DataFrame(data)
-    file_path = '../Results/results.csv'
+    file_path = f'../Results/{model_name}.csv'
 
     if os.path.exists(file_path):
         df = pd.read_csv(file_path)
