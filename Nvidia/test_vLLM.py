@@ -6,13 +6,12 @@ Recommended when a comprehensive test is being run, since model loading often ta
 import time
 from vllm import LLM, SamplingParams
 import numpy as np
-from utils import parse_arguments, save_results_with_power, save_results, print_args
+from utils import parse_arguments, save_results_with_power, save_results
 from power_utils import power_profile_task
 import torch
 
 # Parse command-line arguments
 args = parse_arguments()
-print_args(args, multitest = True)
 
 torch._dynamo.config.suppress_errors = True
 
@@ -23,25 +22,24 @@ if active_gpus > total_gpus:
     print(f"Unsupported Tensor Parallel Size {active_gpus}")
     exit(1)
 
-if args.dtype == "default":
+dtype_map = {
+    "fp16": torch.float16,
+    "bf16": torch.bfloat16
+}
+
+dtype = dtype_map[args.dtype]
+
+try:
     llm = LLM(
         model=args.model_name,
         tensor_parallel_size=args.num_gpus,
         trust_remote_code=True,
+        dtype=dtype,
         device='cuda',
     )
-else:
-    try:
-        llm = LLM(
-            model=args.model_name,
-            tensor_parallel_size=args.num_gpus,
-            trust_remote_code=True,
-            dtype=args.dtype,
-            device='cuda',
-        )
-    except:
-        print(f"Unsupported Data Type: {args.dtype}")
-        exit(1)
+except:
+    print(f"Unsupported Data Type: {args.dtype}")
+    exit(1)
 
 # Modify the batch sizes and sequence lenght here if needed
 
