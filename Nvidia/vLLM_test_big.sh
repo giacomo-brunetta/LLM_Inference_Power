@@ -1,9 +1,9 @@
 big_models=(
-    "mistralai/Mixtral-8x7B-v0.1"
-    "meta-llama/Llama-2-70b-hf"
     "meta-llama/Meta-Llama-3-70B"
-    "Qwen/Qwen2-72B"
-    "deepseek-ai/DeepSeek-R1-Distill-Llama-70B"
+    #"mistralai/Mixtral-8x7B-v0.1"
+    #"meta-llama/Llama-2-70b-hf"
+    #"Qwen/Qwen2-72B"
+    #"deepseek-ai/DeepSeek-R1-Distill-Llama-70B"
 )
 
 
