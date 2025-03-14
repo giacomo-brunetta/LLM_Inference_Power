@@ -4,7 +4,7 @@ import os
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Run inference.")
-    parser.add_argument("--dtype", type=str, default="float16", help="Data type for computation")
+    parser.add_argument("--dtype", type=str, default="bf16", help="Data type for computation")
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size")
     parser.add_argument("--in_len", type=int, default=128, help="In length")
     parser.add_argument("--out_len", type=int, default=128, help="Out length")
