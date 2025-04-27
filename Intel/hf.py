@@ -10,9 +10,8 @@ print_args(args, multi_test=True)
 
 # Map dtype argument to PyTorch dtype
 dtype_map = {
-    "float32": torch.float32,
-    "bfloat16": torch.bfloat16,
-    "float16": torch.float16
+    "bf16": torch.bfloat16,
+    "fp16": torch.float16
 }
 dtype = dtype_map[args.dtype]
 

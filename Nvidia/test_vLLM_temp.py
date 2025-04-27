@@ -49,11 +49,13 @@ except Exception as e:
     print(f"An error occurred while loading model {args.model_name}:", file=sys.stderr)
     print(f"Error type: {type(e).__name__}", file=sys.stderr)
     print(f"Error message: {e}", file=sys.stderr)
+    # Optional: Print the full traceback for more detailed debugging
+    # traceback.print_exc(file=sys.stderr)
     exit(1)
 
 # Modify the batch sizes and sequence lenght here if needed
 
-for batch_size in [1, 2, 4, 8, 16, 32]:
+for batch_size in [32, 64]:
     for length in [128, 256, 512, 1024, 2048]:
 
         input_len = length

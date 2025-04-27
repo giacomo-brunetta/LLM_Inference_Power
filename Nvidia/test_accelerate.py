@@ -49,14 +49,10 @@ model.eval()
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
-for batch_size in [1, 2, 4, 8, 16, 32]:
+for batch_size in [1, 2, 4, 8, 16, 32, 64]:
     for lenght in [128, 256, 512, 1024, 2048]:
 
         print(f"Batch size: {batch_size}, Lenght: {lenght}, total_gpus: {total_gpus}, active_gpus: {active_gpus}")
-        
-        # Skip tests that are too big
-        if lenght >= 512 and batch_size > 4:
-            continue
 
         input_len = lenght
         out_len = lenght

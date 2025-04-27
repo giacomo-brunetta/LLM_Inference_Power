@@ -3,7 +3,7 @@ import time
 import re
 import threading
 import numpy as np
-import matplotlib.pyploy as plt
+import matplotlib.pyplot as plt
 
 def get_gpu_power(device_id):
     try:
