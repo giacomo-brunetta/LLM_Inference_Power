@@ -3,6 +3,8 @@ This python scripts loads the model once and then performs thest for multiple ba
 Recommended when a comprehensive test is being run, since model loading often takes more than inference.
 """
 
+import ray
+import json
 import time
 from vllm import LLM, SamplingParams
 import numpy as np
@@ -13,29 +15,51 @@ import torch
 # Parse command-line arguments
 args = parse_arguments()
 
-torch._dynamo.config.suppress_errors = True
+# torch._dynamo.config.suppress_errors = True
 
 total_gpus = torch.xpu.device_count()
 active_gpus = args.num_gpus
+
+ray.init(
+    num_cpus=32,
+    num_gpus=active_gpus,
+    object_store_memory=32 * 1024**3,  # 32 GB
+    _system_config={
+        "object_spilling_config": json.dumps({
+            "type": "filesystem",
+            "params": {
+                "directory_path": "/root/.cache/ray_tmp/spill"
+            }
+        })
+    }
+)
 
 if active_gpus > total_gpus:
     print(f"Unsupported Tensor Parallel Size {active_gpus}")
     exit(1)
 
-dtype_map = {
-    "fp16": torch.float16,
-    "bf16": torch.bfloat16
-}
-
-dtype = dtype_map[args.dtype]
-
 try:
     llm = LLM(
         model=args.model_name,
+        speculative_model=None,
+        num_speculative_tokens=None,
+        speculative_draft_tensor_parallel_size=None,
+        tokenizer=None,
+        quantization=None,
         tensor_parallel_size=args.num_gpus,
         trust_remote_code=True,
-        dtype=dtype,
+        dtype='bfloat16',
+        max_model_len=4096 ,
+        enforce_eager=False,
+        kv_cache_dtype='auto',
         device='xpu',
+        block_size=16,
+        gpu_memory_utilization=0.9,
+        load_format='auto',
+        enable_chunked_prefill=False,
+        enable_prefix_caching=False,
+        disable_sliding_window=True,
+        distributed_executor_backend='ray',
     )
 except:
     print(f"Unsupported Data Type: {args.dtype}")
@@ -43,22 +67,19 @@ except:
 
 # Modify the batch sizes and sequence lenght here if needed
 
-for batch_size in [8]:
-    for len in [128, 256, 512]:
+for batch_size in [1, 2, 4, 8, 16, 32, 64]:
+    for length in [128, 256, 512, 1024, 2048]:
 
-        if len >= 512 and batch_size > 8:
-            continue
+        input_len = length
+        out_len = length
 
-        input_len = len
-        out_len = len
-
-        print("Testing")
-        print(f"In lenght: {input_len}")
-        print(f"Out Lenght: {out_len}")
+        print("\n----------------Testing----------------\n")
+        print(f"In lenght : {input_len}")
+        print(f"Out lenght: {out_len}")
         print(f"Batch size: {batch_size}")
 
         sequence = SamplingParams(
-            n=batch_size,
+            n=1,
             temperature= 1.0,
             top_p=1.0,
             ignore_eos=True,
@@ -66,7 +87,7 @@ for batch_size in [8]:
         )
 
         first_token = SamplingParams(
-            n=batch_size,
+            n=1,
             max_tokens=1,
         )
 
@@ -85,19 +106,14 @@ for batch_size in [8]:
         end_time = time.perf_counter()
         ttft = end_time - start_time
 
-        print("Measuring Latency")
-        start_time = time.perf_counter()
-        llm.generate(dummy_inputs, sampling_params=sequence, use_tqdm=False)
-        end_time = time.perf_counter()
-        latency = end_time - start_time
-
-        print(f"Latency: {latency}")
         print(f"TTFT: {ttft}")
 
         def f():
             llm.generate(dummy_inputs, sampling_params=sequence, use_tqdm=False)
 
-        latency, power_avgs, power_peaks, energies = power_profile_task(f, 30, 7)
+        latency, power_avgs, power_peaks, energies = power_profile_task(f, 10, 4)
+
+        print(f"Latency: {latency}")
 
         active_power_average = sum([power_avgs[i] for i in range(active_gpus)])
         total_power_average = sum(power_avgs)
@@ -113,7 +129,7 @@ for batch_size in [8]:
             'vLLM',
             torch.xpu.get_device_name(torch.xpu.current_device()),
             active_gpus,
-            args.dtype,
+            'bfloat16',
             batch_size,
             input_len,
             out_len,
@@ -126,3 +142,5 @@ for batch_size in [8]:
             total_energy,
             active_energy
         )
+
+ray.shutdown()
