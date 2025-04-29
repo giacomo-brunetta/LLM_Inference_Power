@@ -34,9 +34,6 @@ def power_probe(device_id, stop_event, tile1_pow, tile2_pow, intervals):
         tile1_pow.append(pow1)
         tile2_pow.append(pow2)
         intervals.append(interval)
-        time.sleep(0.1)  # Sampling interval
-
-    return tile1_pow, tile2_pow, intervals
 
 def power_profile_task(func, duration, total_xpus):
     inference_powers = []
@@ -50,21 +47,22 @@ def power_profile_task(func, duration, total_xpus):
         tile1_pow = []
         tile2_pow = []
         intervals = []
-        inference_powers.append((tile1_pow, tile2_pow))
-        inference_powers_time.append([intervals])
+        inference_powers.append(tile1_pow)
+        inference_powers.append(tile2_pow)
+        inference_powers_time.append(intervals)
         
         thread = threading.Thread(target=power_probe, args=(xpu, stop, tile1_pow, tile2_pow, intervals))
         power_probing_threads.append(thread)
         thread.start()
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     latency = None
 
-    while time.time() - start_time < duration:
+    while time.perf_counter() - start_time < duration:
         func()  # Run the provided function for duration seconds
 
         if latency is None:
-            latency = time.time() - start_time
+            latency = time.perf_counter() - start_time
 
     stop.set()  # Stop power probing threads
 
@@ -91,9 +89,12 @@ def power_profile_task(func, duration, total_xpus):
         peak_power2 = np.max(power2)
         energy2 = np.sum(power2*times)
 
-        power_avgs.append(avg_power1, avg_power2)
-        power_peaks.append(peak_power1, peak_power2)
-        energies.append(energy1, energy2)
+        power_avgs.append(avg_power1)
+        power_avgs.append(avg_power2)
+        power_peaks.append(peak_power1)
+        power_peaks.append(peak_power2)
+        energies.append(energy1)
+        energies.append(energy2)
 
         print("  Tile 0:")
         print(f"    Power avg : {avg_power1 :.3f} W")

@@ -8,7 +8,6 @@ small_models=(
     )
 
 source /opt/intel/oneapi/setvars.sh
-#export CCL_PROCESS_LAUNCHER="mpi"
 
 for model in "${small_models[@]}"; do
     echo "Running $model"
