@@ -2,14 +2,12 @@ import ray
 import time
 from datasets import load_dataset
 from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
-from ray.data import DataContext
 from tqdm import tqdm
 import numpy as np
 import threading
 import argparse
 import pandas as pd
 import matplotlib.pyplot as plt
-from vllm import LLM, SamplingParams
 import logging
 import re
 import os
@@ -71,6 +69,24 @@ def print_chat(ds):
             print(f"    Content: {msg['content']}") 
         print("-" * 80)
 
+def preprocess(row):
+    messages = row["conversation"][:-1]
+    input_chars = count_messages_chars(messages)
+    
+    return {
+        "messages": messages,
+        "sampling_params": sampling_params,
+        "input_chars": input_chars,
+    }
+
+def postprocess(row):
+    output_chars = count_chars(row.get("generated_text", ""))
+    return {
+        "answer": row.get("generated_text", ""),
+        "input_chars": row.get("input_chars", 0),
+        "output_chars": output_chars,
+    }
+
 # Metrics tracking variables
 class Metrics:
     def __init__(self, interval=1, gpus=1):
@@ -94,7 +110,7 @@ class Metrics:
         self.inference_powers_time = []
         self.power_avgs = []
         self.power_peaks = []
-        self.energies = []
+        self.energy = []
         self.power_profiles = []
 
     def start(self):
@@ -142,8 +158,7 @@ class Metrics:
 
             self.power_avgs.append(avg_power)
             self.power_peaks.append(peak_power)
-            self.energies.append(energy)
-            
+            self.energy.append(energy)
     
     def add_row(self, input_count, output_count):
         with self.lock:
@@ -173,7 +188,27 @@ class Metrics:
             print(f"GPU {id}:")
             print(f"    Power avg : {self.power_avgs[id] :.3f} W")
             print(f"    Power peak: {self.power_peaks[id] :.3f} W")
-            print(f"    Energy    : {self.power_peaks[id] :.3f} J")
+            print(f"    Energy    : {self.energy[id] :.3f} J")
+
+    def plot_power(self):
+        for id in range(self.gpus):
+            power = np.array(self.inference_powers[id]) / 1000
+            times = np.array(self.inference_powers_time[id])
+
+            # If timing included warump or idle time, get rid of it
+            if False: #self.total_time > self.inference_time:
+                samples_to_keep = int(self.inference_time / self.interval)
+                power = power[-samples_to_keep:]
+                times = times[-samples_to_keep:]
+
+            plt.plot(np.cumsum(times), power, label=f"GPU {id}")
+
+        plt.xlabel("Time (s)")
+        plt.ylabel("Power (kW)")
+        plt.title("Power Consumption Over Time")
+        plt.legend()
+        plt.savefig("../Results/power_consumption.png")
+        plt.close()
 
     def save_to_pandas(self, args=None):
         metrics_dict = {
@@ -190,7 +225,7 @@ class Metrics:
             "inference_time": [self.inference_time],
             "total_time": [self.total_time],
             "avg_power": [np.sum(self.power_avgs)],
-            "total_energy": [np.sum(self.energies)],
+            "total_energy": [np.sum(self.energy)],
         }
 
         new_data_df = pd.DataFrame(metrics_dict)
@@ -218,67 +253,54 @@ print(f"Rows: {args.rows}")
 # Initialize metrics tracker
 metrics = Metrics(gpus = args.gpus)
 
-# Define a shorter temporary directory path
-short_temp_dir = "/home/gbrun/tmp/ray"
-
-# Initialize Ray with the specified temporary directory
-ray.init(
-    num_cpus=args.cpus,
-    num_gpus=args.gpus,
-    _temp_dir=short_temp_dir
-)
-
-# Load the dataset
-
-# Load the specified split from the Hugging Face dataset
-hf_dataset = load_dataset("lmsys/lmsys-chat-1m", split=f"train[50:{50 + args.rows}]")
-
-# Convert the Hugging Face dataset to a Ray Dataset and select the 'conversation' column
-ds = ray.data.from_huggingface(hf_dataset).select_columns(["conversation"])
-
-print("Dataset loaded.")
-print("Rows:", ds.count())
-
 sampling_params = dict(
     temperature=0,
     max_tokens=args.max_tokens,
 )
 
-def preprocess(row):
-    messages = row["conversation"][:-1]
-    input_chars = count_messages_chars(messages)
-    
-    return {
-        "messages": messages,
-        "sampling_params": sampling_params,
-        "input_chars": input_chars,
-    }
+engine_kwargs = dict(
+    dtype="bfloat16",
+    max_num_seqs=args.batch_size,
+    max_num_batched_tokens=args.batch_size * 2048,
+    tensor_parallel_size=args.gpus,
+    enable_prefix_caching=True,
+    enable_chunked_prefill=False, # experimental optimization
+)
 
-def postprocess(row):
-    output_chars = count_chars(row.get("generated_text", ""))
-    return {
-        "answer": row.get("generated_text", ""),
-        "input_chars": row.get("input_chars", 0),
-        "output_chars": output_chars,
-    }
+config = vLLMEngineProcessorConfig(
+    model_source=args.model_name,
+    engine_kwargs=engine_kwargs,
+    concurrency=args.concurrency,
+    batch_size=args.batch_size,
+)
 
 try:
-    engine_kwargs = dict(
-        enable_chunked_prefill = True,
-        max_num_batched_tokens = args.batch_size * 4096,
-        max_model_len = 4096,
-        max_num_seqs=args.batch_size,
+    ray.init(
+        logging_level=logging.CRITICAL,
+        log_to_driver=False,
+        num_cpus=args.cpus,
+        num_gpus=args.gpus,
+        object_store_memory=0.90 * 40 * 1024 ** 3 * args.gpus,
+        _temp_dir="/home/gbrun/tmp/ray",
     )
 
-    config = vLLMEngineProcessorConfig(
-        model_source=args.model_name,
-        engine_kwargs=engine_kwargs,
-        concurrency=args.concurrency,
-        batch_size=args.batch_size,
-        trust_remote_code=True,
+    print(f"Loading dataset with {args.rows} rows...")
+    ds = (
+        ray.data
+        .from_huggingface(load_dataset("lmsys/lmsys-chat-1m", split=f"train[50:{50+args.rows}]"))
+        .select_columns(["conversation"])
     )
+    ds = ds.materialize()
+    ds = ds.repartition(num_blocks=None, target_num_rows_per_block=args.batch_size)
 
-    processor = build_llm_processor(config, preprocess=preprocess, postprocess=postprocess)
+    print("Dataset loaded.")
+    print("Rows:", ds.count())
+
+    processor = build_llm_processor(
+        config, 
+        preprocess=preprocess, 
+        postprocess=postprocess
+    )
 
     # Process dataset
     processed_ds = processor(ds)
@@ -297,6 +319,7 @@ try:
     # Print statistics
     metrics.print_stats()
     metrics.save_to_pandas(args)
+    metrics.plot_power()
 
 except Exception as e:
     print(f"Error during processing: {type(e).__name__}: {str(e)}")

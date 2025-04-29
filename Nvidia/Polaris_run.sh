@@ -7,12 +7,7 @@
 #PBS -o /home/gbrun/LLM_Inference_Power/logs/output
 #PBS -e /home/gbrun/LLM_Inference_Power/logs/error
 
-module use /soft/modulefiles
-module load conda
-conda activate vLLM_A100
-
-export HF_HOME="/local/scratch"
-export HF_TOKEN=""
+./Polaris_setup.sh
 
 cd ~/LLM_Inference_Power/Nvidia
 ./vLLM_test_70B.sh

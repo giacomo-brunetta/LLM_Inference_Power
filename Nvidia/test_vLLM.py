@@ -39,7 +39,7 @@ try:
         device='cuda',
         block_size=16,
         enable_chunked_prefill=True,
-        gpu_memory_utilization=0.99,
+        gpu_memory_utilization=0.90,
         load_format='auto',
         distributed_executor_backend=None,
         enable_prefix_caching=False,
