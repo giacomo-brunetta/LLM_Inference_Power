@@ -6,8 +6,8 @@ Recommended when a comprehensive test is being run, since model loading often ta
 import time
 from vllm import LLM, SamplingParams
 import numpy as np
-from utils import parse_arguments, save_results_with_power, save_results
-from power_utils import power_profile_task
+from utils import parse_arguments, save_results_with_power, load_model
+from LLM_Inference_Power.Nvidia.profiler_utils import power_profile_task
 import torch
 import traceback
 import sys
@@ -23,28 +23,7 @@ if active_gpus > total_gpus:
     exit(1)
 
 try:
-    llm = LLM(
-        model=args.model_name,
-        speculative_model=None,
-        num_speculative_tokens=None,
-        speculative_draft_tensor_parallel_size=None,
-        tokenizer=None,
-        quantization=None,
-        tensor_parallel_size=args.num_gpus,
-        trust_remote_code=True,
-        dtype='bfloat16',
-        max_model_len=4096 ,
-        enforce_eager=True,
-        kv_cache_dtype='auto',
-        device='cuda',
-        block_size=16,
-        enable_chunked_prefill=True,
-        gpu_memory_utilization=0.90,
-        load_format='auto',
-        distributed_executor_backend=None,
-        enable_prefix_caching=False,
-        disable_sliding_window=True,
-    )
+    llm = load_model(args.model_name, args.num_gpus, args.batch_size)
 except Exception as e:
     print(f"An error occurred while loading model {args.model_name}:", file=sys.stderr)
     print(f"Error type: {type(e).__name__}", file=sys.stderr)

@@ -7,7 +7,7 @@ from accelerate import Accelerator
 import numpy as np
 import matplotlib.pyplot as plt
 
-from power_utils import power_profile_task, gpuPowerProbe
+from LLM_Inference_Power.Nvidia.profiler_utils import power_profile_task, gpuPowerProbe
 from utils import parse_arguments, save_results, save_results_with_power
 
 args = parse_arguments()

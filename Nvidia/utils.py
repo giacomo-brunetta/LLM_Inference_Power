@@ -1,50 +1,84 @@
 import argparse
 import pandas as pd
 import os
+from vllm import LLM, SamplingParams
+import torch
+
+# Argument parsing
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Run inference.")
-    parser.add_argument("--dtype", type=str, default="fp16", help="Data type for computation")
-    parser.add_argument("--num_gpus", type=int, default=1, help="Gpus to be used")
+    parser.add_argument("--tp", type=int, default=1, help="Gpus to be used in Tensor Parallelism")
+    parser.add_argument("--pp", type=int, default=1, help="Gpus to be used in Pipeline Parallelism")
+    parser.add_argument("--ep", action='store_true', help="Expert Parallelism")
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-2-7b-hf", help="Model")
     parser.add_argument("--power", action='store_true', help="Measure Power")
     return parser.parse_args()
 
 def parse_arguments_single_run():
     parser = argparse.ArgumentParser(description="Run inference.")
-    parser.add_argument("--dtype", type=str, default="f16", help="Data type for computation")
-    parser.add_argument("--batch_size", type=int, default=1, help="Batch size")
-    parser.add_argument("--in_len", type=int, default=128, help="In length")
-    parser.add_argument("--out_len", type=int, default=128, help="Out length")
-    parser.add_argument("--num_gpus", type=int, default=1, help="Gpus to be used")
+    parser.add_argument("--batch_size", type=int, default=None, help="Batch size")
+    parser.add_argument("--tp", type=int, default=1, help="Gpus to be used in Tensor Parallelism")
+    parser.add_argument("--pp", type=int, default=1, help="Gpus to be used in Pipeline Parallelism")
+    parser.add_argument("--ep", action='store_true', help="Expert Parallelism")
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-2-7b-hf", help="Model")
     parser.add_argument("--power", action='store_true', help="Measure Power")
-    return parser.parse_args()
 
-def save_results(model_name, framework, hw, num, dtype, batch_size, in_len, out_len, ttft, latency):
-    data = {
-        'Model Name': [model_name],
-        'FrameWork': [framework],
-        'Hardware type': [hw],
-        'Count': [num],
-        'Precision': [dtype],
-        'Batch Size': [batch_size],
-        'In tokens': [in_len],
-        'Out tokens': [out_len],
-        'TTFT': [ttft * 1000],  # Convert TTFT to ms
-        'Latency': [latency]
-    }
+    args = parser.parse_args()
+    
+    if args.batch_size == -1:
+        args.batch_size = None
 
-    new_data_df = pd.DataFrame(data)
-    file_path = f'../Results/{model_name}.csv'
+    return args
 
-    if os.path.exists(file_path):
-        df = pd.read_csv(file_path)
-        df = pd.concat([df, new_data_df], ignore_index=True)
+# Constent model loading between runs
+
+def load_model(model_name, batch_size, tp = 1, pp = 1, ep = False):
+    """
+    Load the model using vLLM. The GPUs are set to be used in tensor parallelism.
+    """
+    llm = LLM(
+        model=model_name,
+        max_num_seqs = batch_size,
+        tokenizer=None,
+        quantization=None,
+        tensor_parallel_size = tp,
+        pipeline_parallel_size=pp,
+        trust_remote_code=True,
+        dtype='bfloat16',
+        enforce_eager=True,
+        kv_cache_dtype='auto',
+        device='cuda',
+        block_size=16,
+        enable_chunked_prefill=True,
+        gpu_memory_utilization=0.95,
+        load_format='auto',
+        distributed_executor_backend=None,
+        enable_prefix_caching=False,
+        disable_sliding_window=False,
+        # max_model_len = 10000,
+    )
+
+    return llm
+
+# Save results to CSV
+
+def save_results(args, aggregated_data, path, batch_size = None):
+    aggregated_data['Model Name'] = args.model_name
+    aggregated_data['FrameWork'] = 'vLLM'
+    aggregated_data['Hardware type'] = torch.cuda.get_device_name(torch.cuda.current_device())
+    aggregated_data['TP Size'] = args.tp
+    aggregated_data['PP Size'] = args.pp
+    aggregated_data['EP'] = args.ep
+    if batch_size is not None:
+        aggregated_data['Batch Size'] = batch_size
     else:
-        df = new_data_df
+        aggregated_data['Batch Size'] = args.batch_size
 
-    df.to_csv(file_path, index=False)
+    if os.path.exists(path):
+        aggregated_data.to_csv(path, mode='a', index=False, header=False)
+    else:
+        aggregated_data.to_csv(path, mode='w', index=False, header=True)
 
 def save_results_with_power(model_name, framework, hw, num, dtype, batch_size, in_len, out_len, ttft, latency, power_avg, active_power_avg, power_peak, active_power_peak, energy, active_energy):
     data = {

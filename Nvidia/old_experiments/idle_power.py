@@ -1,5 +1,5 @@
 import time
-from power_utils import power_profile_task
+from LLM_Inference_Power.Nvidia.profiler_utils import power_profile_task
 
 def do_nothing():
     time.sleep(60)
