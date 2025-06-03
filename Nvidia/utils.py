@@ -23,7 +23,7 @@ def parse_arguments_single_run():
     parser.add_argument("--ep", action='store_true', help="Expert Parallelism")
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-2-7b-hf", help="Model")
     parser.add_argument("--power", action='store_true', help="Measure Power")
-
+    parser.add_argument("--dtype", type=str, default='bfloat16')
     args = parser.parse_args()
     
     if args.batch_size == -1:
@@ -33,7 +33,7 @@ def parse_arguments_single_run():
 
 # Constent model loading between runs
 
-def load_model(model_name, batch_size, tp = 1, pp = 1, ep = False):
+def load_model(model_name, batch_size, dtype='bfloat16', tp = 1, pp = 1, ep = False):
     """
     Load the model using vLLM. The GPUs are set to be used in tensor parallelism.
     """
@@ -45,7 +45,7 @@ def load_model(model_name, batch_size, tp = 1, pp = 1, ep = False):
         tensor_parallel_size = tp,
         pipeline_parallel_size=pp,
         trust_remote_code=True,
-        dtype='bfloat16',
+        dtype=dtype,
         enforce_eager=True,
         kv_cache_dtype='auto',
         device='cuda',

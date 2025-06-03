@@ -70,7 +70,7 @@ inputs, sampling_params = processed_dataset(ds)
 # Load the model
 torch._dynamo.config.suppress_errors = True
 
-llm = load_model(model_name,batch_size, tp = args.tp, pp = args.pp, ep = args.ep)
+llm = load_model(model_name,batch_size, tp = args.tp, pp = args.pp, ep = args.ep, dtype=args.dtype)
 
 # warm_up
 print("Warming up...")
