@@ -12,82 +12,154 @@ from py3nvml.py3nvml import nvmlDeviceGetPowerUsage,  \
     nvmlInit, \
     nvmlShutdown
 
+from py3nvml.py3nvml import (
+    nvmlDeviceGetPowerUsage,
+    nvmlDeviceGetCount,
+    nvmlDeviceGetHandleByIndex,
+    nvmlDeviceGetMemoryInfo,
+    nvmlDeviceGetUtilizationRates,
+    nvmlInit,
+    nvmlShutdown
+)
+import multiprocessing
+import time
+
 class gpuPowerProbe(object):
-    """
-    From
-    File: power_utils.py
-    Author: Farah Ferdaus
-    Email: fferdaus@anl.gov
-    Last updated: Jul 22, 2024
-    Description: A power analysis routine using built-in power monitoring tools provided by the vendor.
-    """
     def __init__(self, interval, gpu_id=-1):
         self.interval = multiprocessing.Value('d', interval)
-        self.len = int(7200/interval)
+        self.len = int(7200 / interval)
+
         self.powers = multiprocessing.Array('d', self.len)
         self.times = multiprocessing.Array('d', self.len)
-        self.gpu_id = multiprocessing.Value('i', gpu_id)  
+        self.mem_used = multiprocessing.Array('d', self.len)
+        self.gpu_utils = multiprocessing.Array('d', self.len)
+        self.mem_utils = multiprocessing.Array('d', self.len)
+
+        self.gpu_id = multiprocessing.Value('i', gpu_id)
         self.process = None
-        self.prevTime = multiprocessing.Value('d',time.time())
-        self.halt = multiprocessing.Value('i',1)  
-        self.count = multiprocessing.Value('i',0)
-        self.isrunning = multiprocessing.Value('i',0)
-        self.alive = multiprocessing.Value('i',0)  
+        self.prevTime = multiprocessing.Value('d', time.time())
+        self.halt = multiprocessing.Value('i', 1)
+        self.count = multiprocessing.Value('i', 0)
+        self.isrunning = multiprocessing.Value('i', 0)
+        self.alive = multiprocessing.Value('i', 0)
         self.init()
 
-    def _getGpuPower(self, powers, times, gpu_id, count, halt, alive, isrunning, prevTime, interval):
+    def _getGpuPower(self, powers, times, mem_used, gpu_utils, mem_utils,
+                     gpu_id, count, halt, alive, isrunning, prevTime, interval):
         nvmlInit()
-        while (alive.value):
-            while (not halt.value):
+
+        while alive.value:
+            while not halt.value:
                 isrunning.value = 1
+
+                # Determine which GPUs to query
                 if gpu_id.value > -1:
-                    power = nvmlDeviceGetPowerUsage(nvmlDeviceGetHandleByIndex(gpu_id.value))
+                    handles = [nvmlDeviceGetHandleByIndex(gpu_id.value)]
                 else:
-                    power = 0
                     num_gpus = nvmlDeviceGetCount()
-                    for i in range(num_gpus):
-                        power += nvmlDeviceGetPowerUsage(nvmlDeviceGetHandleByIndex(i))
-                    
+                    handles = [nvmlDeviceGetHandleByIndex(i) for i in range(num_gpus)]
+
+                # --- Power measurement ---
+                power = 0
+                for h in handles:
+                    power += nvmlDeviceGetPowerUsage(h)
+
+                # --- Memory measurement (sum used memory across handles, convert to MiB) ---
+                total_mem_used = 0
+                for h in handles:
+                    mem_info = nvmlDeviceGetMemoryInfo(h)
+                    total_mem_used += mem_info.used / (1024 ** 2)  # bytes -> MiB
+
+                # --- Utilization measurement ---
+                gpu_util_sum = 0
+                mem_util_sum = 0
+                for h in handles:
+                    util = nvmlDeviceGetUtilizationRates(h)
+                    gpu_util_sum += util.gpu
+                    mem_util_sum += util.memory
+                avg_gpu_util = gpu_util_sum / len(handles)
+                avg_mem_util = mem_util_sum / len(handles)
+
+                # Wait until next interval
                 new_time = time.time()
-                while (new_time-prevTime.value < interval.value):
+                while (new_time - prevTime.value) < interval.value:
                     new_time = time.time()
-                powers[count.value] = power
-                times[count.value] = new_time-prevTime.value
+
+                # Log everything at this timestamp index
+                idx = count.value
+                powers[idx] = power
+                times[idx] = new_time - prevTime.value
+                mem_used[idx] = total_mem_used
+                gpu_utils[idx] = avg_gpu_util
+                mem_utils[idx] = avg_mem_util
+
+                # Increment counter and update prevTime
                 count.value += 1
                 prevTime.value = new_time
                 isrunning.value = 0
+
         nvmlShutdown()
-        
+
     def init(self):
         self.halt.value = 1
         self.alive.value = 1
-        self.process = multiprocessing.Process(target = self._getGpuPower, args = (self.powers, self.times, self.gpu_id,
-                self.count, self.halt, self.alive, self.isrunning, self.prevTime, self.interval))
+        args = (
+            self.powers,
+            self.times,
+            self.mem_used,
+            self.gpu_utils,
+            self.mem_utils,
+            self.gpu_id,
+            self.count,
+            self.halt,
+            self.alive,
+            self.isrunning,
+            self.prevTime,
+            self.interval,
+        )
+        self.process = multiprocessing.Process(target=self._getGpuPower, args=args)
         self.process.start()
 
-    def start(self):  
+    def start(self):
         self.count.value = 0
         self.prevTime.value = time.time()
         self.halt.value = 0
 
     def stop(self):
         self.halt.value = 1
-        while (self.isrunning.value):
+        while self.isrunning.value:
             pass
-        return self.powers[:self.count.value], self.times[:self.count.value]
-    
+        return {
+            'power': self.powers[:self.count.value],
+            'time_intervals': self.times[:self.count.value],
+            'mem_used_mib': self.mem_used[:self.count.value],
+            'gpu_util_pct': self.gpu_utils[:self.count.value],
+            'mem_util_pct': self.mem_utils[:self.count.value],
+        }
+
     def destroy(self):
         self.alive.value = 0
         self.process.join()
 
-class PowerProfiler:
-    def __init__(self, interval=0.5, gpus = 1, active_gpus = 1):
+import numpy as np
+
+class GPUProfiler:
+    def __init__(self, interval=0.5, gpus=1, active_gpus=1):
         self.gpus = gpus
         self.active_gpus = active_gpus
-        self.inference_powers = []
-        self.inference_powers_time = []
 
-        self.power_profiles = [gpuPowerProbe(interval=interval, gpu_id=id) for id in range(gpus)]
+        # Lists to collect per‐GPU time series
+        self.inference_powers = []          # list of power arrays (µW) per GPU
+        self.inference_powers_time = []     # list of time‐interval arrays per GPU
+        self.inference_mem_used = []        # list of memory‐used arrays (MiB) per GPU
+        self.inference_gpu_utils = []       # list of GPU_util_pct arrays per GPU
+        self.inference_mem_utils = []       # list of memory_util_pct arrays per GPU
+
+        # Instantiate one gpuPowerProbe per GPU
+        self.power_profiles = [
+            gpuPowerProbe(interval=interval, gpu_id=gpu_id)
+            for gpu_id in range(self.gpus)
+        ]
 
     def start(self):
         for power_profile in self.power_profiles:
@@ -95,79 +167,202 @@ class PowerProfiler:
 
     def stop(self):
         for power_profile in self.power_profiles:
-            power, times = power_profile.stop()
-            self.inference_powers.append(power)
-            self.inference_powers_time.append(times)
+            stats = power_profile.stop()
+            # stats is a dict with keys:
+            #   'power'           -> array of power samples (µW)
+            #   'time_intervals'  -> array of elapsed‐time between samples (s)
+            #   'mem_used_mib'    -> array of total memory used (MiB)
+            #   'gpu_util_pct'    -> array of average GPU utilization (%)
+            #   'mem_util_pct'    -> array of average memory utilization (%)
+
+            self.inference_powers.append(np.array(stats['power']))
+            self.inference_powers_time.append(np.array(stats['time_intervals']))
+            self.inference_mem_used.append(np.array(stats['mem_used_mib']))
+            self.inference_gpu_utils.append(np.array(stats['gpu_util_pct']))
+            self.inference_mem_utils.append(np.array(stats['mem_util_pct']))
+
             power_profile.destroy()
 
     def calculate_metrics(self, verbose=True):
         power_avgs = []
         power_peaks = []
         energies = []
+
+        mem_avgs = []
+        mem_peaks = []
+        gpu_util_avgs = []
+        gpu_util_peaks = []
+        mem_util_avgs = []
+        mem_util_peaks = []
+
         total_power = None
         active_power = None
+
         if verbose:
-            print("\n----------------Power-----------------------")
+            print("\n---------------- Power & Memory -----------------------")
 
+        # Find the minimum number of samples across GPUs for alignment
+        min_sample_num = min([len(p) for p in self.inference_powers])
 
-        min_sample_num = min([len(power) for power in self.inference_powers])
+        for gpu_id in range(self.gpus):
+            power = self.inference_powers[gpu_id] / 1000  # convert µW → W
+            times = self.inference_powers_time[gpu_id]
+            mem_used = self.inference_mem_used[gpu_id]
+            gpu_util = self.inference_gpu_utils[gpu_id]
+            mem_util = self.inference_mem_utils[gpu_id]
 
-        for id in range(self.gpus):
-            print(f"GPU {id}:")
-            power = np.array(self.inference_powers[id]) / 1000  # to Watt
-            times = np.array(self.inference_powers_time[id])
+            # Truncate to common length
+            power = power[:min_sample_num]
+            times = times[:min_sample_num]
+            mem_used = mem_used[:min_sample_num]
+            gpu_util = gpu_util[:min_sample_num]
+            mem_util = mem_util[:min_sample_num]
+
+            # Compute power metrics
             avg_power = np.mean(power)
             peak_power = np.max(power)
-            energy = np.sum(power*times)
+            energy = np.sum(power * times)
 
+            # Compute memory‐used metrics
+            avg_mem = np.mean(mem_used)
+            peak_mem = np.max(mem_used)
+
+            # Compute utilization metrics
+            avg_gpu_util = np.mean(gpu_util)
+            peak_gpu_util = np.max(gpu_util)
+            avg_mem_util = np.mean(mem_util)
+            peak_mem_util = np.max(mem_util)
+
+            # Aggregate total & active power time series
             if total_power is None:
-                total_power = power[0:min_sample_num]
-                active_power = power[0:min_sample_num]
-
-            elif id < self.active_gpus:
-                active_power += power[0:min_sample_num]
-                total_power += power[0:min_sample_num]
-
+                total_power = power.copy()
+                active_power = power.copy()
+            elif gpu_id < self.active_gpus:
+                active_power += power
+                total_power += power
             else:
-                total_power += power[0:min_sample_num]
-        
+                total_power += power
+
             power_avgs.append(avg_power)
             power_peaks.append(peak_power)
             energies.append(energy)
 
+            mem_avgs.append(avg_mem)
+            mem_peaks.append(peak_mem)
+            gpu_util_avgs.append(avg_gpu_util)
+            gpu_util_peaks.append(peak_gpu_util)
+            mem_util_avgs.append(avg_mem_util)
+            mem_util_peaks.append(peak_mem_util)
+
             if verbose:
-                print(f"    Power avg : {avg_power :.3f} W")
-                print(f"    Power peak: {peak_power :.3f} W")
-                print(f"    Energy    : {energy :.3f} J")
-            
-        
-        active_energy = sum(energies[0:self.active_gpus])
+                print(f"GPU {gpu_id}:")
+                print(f"    Power avg      : {avg_power: .3f} W")
+                print(f"    Power peak     : {peak_power: .3f} W")
+                print(f"    Energy         : {energy: .3f} J")
+                print(f"    Memory used avg: {avg_mem: .3f} MiB")
+                print(f"    Memory used peak: {peak_mem: .3f} MiB")
+                print(f"    GPU util avg   : {avg_gpu_util: .2f} %")
+                print(f"    GPU util peak  : {peak_gpu_util: .2f} %")
+                print(f"    Mem util avg   : {avg_mem_util: .2f} %")
+                print(f"    Mem util peak  : {peak_mem_util: .2f} %")
+                print("")
+
+        # Overall aggregated metrics
+        active_energy = sum(energies[: self.active_gpus])
         total_energy = sum(energies)
-        active_power_avg = sum(power_avgs[0:self.active_gpus])
+        active_power_avg = sum(power_avgs[: self.active_gpus])
         avg_total_power = sum(power_avgs)
-        total_power_peak = max(total_power)
-        active_power_peak = max(active_power)
-        
+        total_power_peak = np.max(total_power)
+        active_power_peak = np.max(active_power)
+
+        # Aggregate memory and utilization across active GPUs (averaging their averages)
+        active_mem_avg = np.mean(mem_avgs[: self.active_gpus])
+        active_mem_peak = max(mem_peaks[: self.active_gpus])
+        active_mem_p50 = np.percentile(mem_avgs[: self.active_gpus], 50)
+        active_mem_p95 = np.percentile(mem_avgs[: self.active_gpus], 95)
+
+        active_gpu_util_avg = np.mean(gpu_util_avgs[: self.active_gpus])
+        active_gpu_util_peak = max(gpu_util_peaks[: self.active_gpus])
+        active_gpu_util_p50 = np.percentile(gpu_util_avgs[: self.active_gpus], 50)
+        active_gpu_util_p95 = np.percentile(gpu_util_avgs[: self.active_gpus], 95)
+
+        active_mem_util_avg = np.mean(mem_util_avgs[: self.active_gpus])
+        active_mem_util_peak = max(mem_util_peaks[: self.active_gpus])
+        active_mem_util_p50 = np.percentile(mem_util_avgs[: self.active_gpus], 50)
+        active_mem_util_p95 = np.percentile(mem_util_avgs[: self.active_gpus], 95)
+
+        total_mem_avg = np.mean(mem_avgs)
+        total_mem_peak = max(mem_peaks)
+        total_mem_p50 = np.percentile(mem_avgs, 50)
+        total_mem_p95 = np.percentile(mem_avgs, 95)
+
+        total_gpu_util_avg = np.mean(gpu_util_avgs)
+        total_gpu_util_peak = max(gpu_util_peaks)
+        total_gpu_util_p50 = np.percentile(gpu_util_avgs, 50)
+        total_gpu_util_p95 = np.percentile(gpu_util_avgs, 95)
+
+        total_mem_util_avg = np.mean(mem_util_avgs)
+        total_mem_util_peak = max(mem_util_peaks)
+        total_mem_util_p50 = np.percentile(mem_util_avgs, 50)
+        total_mem_util_p95 = np.percentile(mem_util_avgs, 95)
+
         if verbose:
-            print(f"Total:")
-            print(f"    Power avg : {avg_total_power :.3f} W")
-            print(f"    Power peak: {total_power_peak :.3f} W")
-            print(f"    Energy    : {total_energy :.3f} J")
-            print(f"Active GPUs:")
-            print(f"    Power avg : {active_power_avg :.3f} W")
-            print(f"    Power peak: {active_power_peak :.3f} W")
-            print(f"    Energy    : {active_energy :.3f} J")
+            print("Overall Total (all GPUs):")
+            print(f"    Power avg      : {avg_total_power: .3f} W")
+            print(f"    Power peak     : {total_power_peak: .3f} W")
+            print(f"    Energy         : {total_energy: .3f} J")
+            print(f"    Memory avg     : {total_mem_avg: .3f} MiB ({total_mem_util_avg: .2f} %)")
+            print(f"    Memory peak    : {total_mem_peak: .3f} MiB ({total_mem_util_peak: .2f} %)")
+            print(f"    GPU util avg   : {total_gpu_util_avg: .2f} %")
+            print(f"    GPU util peak  : {total_gpu_util_peak: .2f} %")
+            print("")
+            print(f"Overall Active (first {self.active_gpus} GPU(s)):")
+            print(f"    Power avg      : {active_power_avg: .3f} W")
+            print(f"    Power peak     : {active_power_peak: .3f} W")
+            print(f"    Energy         : {active_energy: .3f} J")
+            print(f"    Memory avg     : {active_mem_avg: .3f} MiB ({active_mem_util_avg: .2f} %)")
+            print(f"    Memory peak    : {active_mem_peak: .3f} MiB ({active_mem_util_peak: .2f} %)")
+            print(f"    GPU util avg   : {active_gpu_util_avg: .2f} %")
+            print(f"    GPU util peak  : {active_gpu_util_peak: .2f} %")
             print()
+    
+        return {
+            "active_mem_avg": active_mem_avg,
+            "active_mem_peak": active_mem_peak,
+            "active_mem_p50": active_mem_p50,
+            "active_mem_p95": active_mem_p95,
+            
+            "active_gpu_util_avg": active_gpu_util_avg,
+            "active_gpu_util_peak": active_gpu_util_peak,
+            "active_gpu_util_p50": active_gpu_util_p50,
+            "active_gpu_util_p95": active_gpu_util_p95,
 
-        return  active_power_avg, avg_total_power, total_energy, active_energy, total_power_peak, active_power_peak
+            "active_mem_util_avg": active_mem_util_avg,
+            "active_mem_util_peak": active_mem_util_peak,
+            "active_mem_util_p50": active_mem_util_p50,
+            "active_mem_util_p95": active_mem_util_p95,
 
-def metrics(results, power_profiler, verbose=True):
+            "total_mem_avg": total_mem_avg,
+            "total_mem_peak": total_mem_peak,
+            "total_mem_p50": total_mem_p50,
+            "total_mem_p95": total_mem_p95,
 
-    # Get the power data
-    active_power_avg, avg_total_power, total_energy, active_energy, total_power_peak, active_power_peak = power_profiler.calculate_metrics(verbose)
+            "total_gpu_util_avg": total_gpu_util_avg,
+            "total_gpu_util_peak": total_gpu_util_peak,
+            "total_gpu_util_p50": total_gpu_util_p50,
+            "total_gpu_util_p95": total_gpu_util_p95,
+
+            "total_mem_util_avg": total_mem_util_avg,
+            "total_mem_util_peak": total_mem_util_peak,
+            "total_mem_util_p50": total_mem_util_p50,
+            "total_mem_util_p95": total_mem_util_p95,
+        }
+
+def metrics(results, gpu_profiler, verbose=True):
+    # Get all GPU profiler metrics
+    gpu_profile = gpu_profiler.calculate_metrics(verbose)
     
     # get data from results
-
     ttfts = []
     latencies = []
     latencies_with_queue = []
@@ -180,7 +375,7 @@ def metrics(results, power_profiler, verbose=True):
     start = results[0].metrics.first_scheduled_time
     end = 0
 
-    # Get token count, latency, and ttft for every response
+    # Collect token count, latency, and TTFT for every response
     for resp in results:
         end = max(end, resp.metrics.finished_time)
         ttfts.append(resp.metrics.first_token_time - resp.metrics.first_scheduled_time)
@@ -194,51 +389,14 @@ def metrics(results, power_profiler, verbose=True):
 
     input_tokens = np.array(input_tokens)
     output_tokens = np.array(output_tokens)
-
-    if verbose:
-        print("\n----------------Tokens-----------------------")
-        print(f"In  Tokens : {np.sum(input_tokens):.3f} (total)")
-        print(f"             {np.mean(input_tokens):.3f} (avg)")
-        print(f"             {np.max(input_tokens):.3f} (max)")
-        print(f"             {np.min(input_tokens):.3f} (min)")
-        print()
-        print(f"Out Tokens: {np.sum(output_tokens):.3f} (total)")
-        print(f"            {np.mean(output_tokens):.3f} (avg)")
-        print(f"            {np.max(output_tokens):.3f} (max)")
-        print(f"            {np.min(output_tokens):.3f} (min)")
-        print()
-
-    latency_total = end - start
     ttfts = np.array(ttfts)
     latencies = np.array(latencies)
     latencies_with_queue = np.array(latencies_with_queue)
     decode_times = np.array(decode_times)
     queue_times = np.array(queue_times)
 
-    if verbose:
-        print("\n----------------Performance-----------------------")
-        print(f"Latency:    {latency_total:.3f} s (total)")
-        print(f"            {np.mean(latencies):.3f} s (avg)")
-        print(f"            {np.max(latencies):.3f} s (max)")
-        print(f"            {np.min(latencies):.3f} s (min)")
-        print()
-        print(f"TTFT:       {np.mean(ttfts):.3f} s (mean)")
-        print(f"            {np.max(ttfts):.3f} s (max)")
-        print(f"            {np.min(ttfts):.3f} s (min)")
-        print()
-
-    tp_total = (np.sum(input_tokens) + np.sum(output_tokens)) / latency_total
-    out_tp_total = np.sum(output_tokens) / latency_total
-    in_tp_total = np.sum(input_tokens)  / latency_total
-
-    if verbose:
-        print(f"Throughput: {tp_total:.3f} tok/s (in + out)")
-        print(f"  total     {out_tp_total:.3f} tok/s (out)")
-        print(f"            {in_tp_total:.3f} tok/s (in)")
-        print()
-
-    # Datagrame with latencies for each response
-    latency_data =  pd.DataFrame({
+    # Build the per-response DataFrame
+    latency_data = pd.DataFrame({
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "latency": latencies,
@@ -248,48 +406,121 @@ def metrics(results, power_profiler, verbose=True):
         "ttft": ttfts,
     })
 
-    print("\n----------------Efficiency-----------------------")
-    print(f"Energy/Tok: {(1000*total_energy/(np.sum(latency_data['input_tokens']) + np.sum(latency_data['output_tokens']))):.3f} J / 1000 tok (in + out)")
-    print(f"            {1000*total_energy/np.sum(latency_data['output_tokens']):.3f} J / 1000 tok (out)")
-    print(f"            {1000*total_energy/np.sum(latency_data['input_tokens']):.3f} J / 1000 tok (in)")
-    print()
+    # Compute summary statistics for tokens and latencies
+    sum_in_tokens   = np.sum(input_tokens)
+    mean_in_tokens  = np.mean(input_tokens)
+    max_in_tokens   = np.max(input_tokens)
+    min_in_tokens   = np.min(input_tokens)
+    p50_in_tokens   = np.percentile(input_tokens, 50)
+    p95_in_tokens   = np.percentile(input_tokens, 95)
 
-    aggregated_data = pd.DataFrame({
-        "Total Avg Power (W)": [avg_total_power],
-        "Active Avg Power (W)": [active_power_avg],
-        "Total Peak Power (W)": [total_power_peak],
-        "Active Peak Power (W)": [active_power_peak],
-        "Total Energy (J)": [total_energy],
-        "Active Energy (J)": [active_energy],
+    sum_out_tokens  = np.sum(output_tokens)
+    mean_out_tokens = np.mean(output_tokens)
+    max_out_tokens  = np.max(output_tokens)
+    min_out_tokens  = np.min(output_tokens)
+    p50_out_tokens  = np.percentile(output_tokens, 50)
+    p95_out_tokens  = np.percentile(output_tokens, 95)
 
-        "Total Input Tokens": [np.sum(input_tokens)],
-        "Avg Input Tokens": [np.mean(input_tokens)],
-        "Max Input Tokens": [np.max(input_tokens)],
-        "Min Input Tokens": [np.min(input_tokens)],
+    latency_total = end - start
+    mean_latency = np.mean(latencies)
+    max_latency  = np.max(latencies)
+    min_latency  = np.min(latencies)
+    p50_latency  = np.percentile(latencies, 50)
+    p95_latency  = np.percentile(latencies, 95)
 
-        "Total Output Tokens": [np.sum(output_tokens)],
-        "Avg Output Tokens": [np.mean(output_tokens)],
-        "Max Output Tokens": [np.max(output_tokens)],
-        "Min Output Tokens": [np.min(output_tokens)],
+    mean_ttft = np.mean(ttfts)
+    max_ttft  = np.max(ttfts)
+    min_ttft  = np.min(ttfts)
+    p50_ttft  = np.percentile(ttfts, 50)
+    p95_ttft  = np.percentile(ttfts, 95)
 
-        "Total Latency (data['s)": [latency_total],
-        "Avg Latency (s)": [np.mean(latencies)],
-        "Max Latency (s)": [np.max(latencies)],
-        "Min Latency (s)": [np.min(latencies)],
+    tp_total = (sum_in_tokens + sum_out_tokens) / latency_total
+    out_tp_total = sum_out_tokens / latency_total
+    in_tp_total = sum_in_tokens / latency_total
 
-        "Mean TTFT (s)": [np.mean(ttfts)],
-        "Max TTFT (s)": [np.max(ttfts)],
-        "Min TTFT (s)": [np.min(ttfts)],
+    # Compute energy efficiency per token (human‐readable)
+    energy_tok_inout = 1000 * gpu_profile['total_energy'] / (sum_in_tokens + sum_out_tokens)
+    energy_tok_out   = 1000 * gpu_profile['total_energy'] / sum_out_tokens
+    energy_tok_in    = 1000 * gpu_profile['total_energy'] / sum_in_tokens
 
-        "Total Throughput (tok/s) (in+out)": [tp_total],
-        "Total Throughput (tok/s) (out)": [out_tp_total],
-        "Total Throughput (tok/s) (in)": [in_tp_total],
+    if verbose:
+        print("\n----------------Tokens-----------------------")
+        print(f"In Tokens (total): {sum_in_tokens:.0f}")
+        print(f"  Avg:  {mean_in_tokens:.2f},  P50: {p50_in_tokens:.0f},  P95: {p95_in_tokens:.0f},  Max: {max_in_tokens:.0f},  Min: {min_in_tokens:.0f}")
+        print()
+        print(f"Out Tokens (total): {sum_out_tokens:.0f}")
+        print(f"  Avg:  {mean_out_tokens:.2f},  P50: {p50_out_tokens:.0f},  P95: {p95_out_tokens:.0f},  Max: {max_out_tokens:.0f},  Min: {min_out_tokens:.0f}")
+        print()
 
-        "Energy/Tok (J/1000tok) (in+out)": [(1000*total_energy/(np.sum(input_tokens) + np.sum(output_tokens)))],
-        "Energy/Tok (J/1000tok) (out)": [(1000*total_energy/np.sum(output_tokens))],
-        "Energy/Tok (J/1000tok) (in)": [(1000*total_energy/np.sum(input_tokens))]
-    })
-    
+        print("\n----------------Performance-----------------------")
+        print(f"Latency (total): {latency_total:.3f} s")
+        print(f"  Avg: {mean_latency:.3f} s,  P50: {p50_latency:.3f} s,  P95: {p95_latency:.3f} s,  Max: {max_latency:.3f} s,  Min: {min_latency:.3f} s")
+        print()
+        print(f"TTFT:  Avg: {mean_ttft:.3f} s,  P50: {p50_ttft:.3f} s,  P95: {p95_ttft:.3f} s,  Max: {max_ttft:.3f} s,  Min: {min_ttft:.3f} s")
+        print()
+
+        print(f"Throughput: {tp_total:.2f} tok/s (in+out)")
+        print(f"  Out: {out_tp_total:.2f} tok/s")
+        print(f"  In : {in_tp_total:.2f} tok/s")
+        print()
+
+        print("\n----------------Efficiency-----------------------")
+        print(f"Energy/Tok (in+out): {energy_tok_inout:.3f} J / 1000 tok")
+        print(f"Energy/Tok (out):    {energy_tok_out:.3f} J / 1000 tok")
+        print(f"Energy/Tok (in):     {energy_tok_in:.3f} J / 1000 tok")
+        print()
+
+    # Build a one‐row DataFrame for all GPU profiler metrics
+    gpu_profile_df = pd.DataFrame({key: [value] for key, value in gpu_profile.items()})
+
+    # Build a one‐row DataFrame for token/latency stats
+    token_stats = {
+        # Input tokens
+        "In Tokens Total":       sum_in_tokens,
+        "In Tokens Avg":         mean_in_tokens,
+        "In Tokens P50":         p50_in_tokens,
+        "In Tokens P95":         p95_in_tokens,
+        "In Tokens Max":         max_in_tokens,
+        "In Tokens Min":         min_in_tokens,
+
+        # Output tokens
+        "Out Tokens Total":      sum_out_tokens,
+        "Out Tokens Avg":        mean_out_tokens,
+        "Out Tokens P50":        p50_out_tokens,
+        "Out Tokens P95":        p95_out_tokens,
+        "Out Tokens Max":        max_out_tokens,
+        "Out Tokens Min":        min_out_tokens,
+
+        # Latency
+        "Latency Total (s)":     latency_total,
+        "Latency Avg (s)":       mean_latency,
+        "Latency P50 (s)":       p50_latency,
+        "Latency P95 (s)":       p95_latency,
+        "Latency Max (s)":       max_latency,
+        "Latency Min (s)":       min_latency,
+
+        # TTFT
+        "TTFT Avg (s)":          mean_ttft,
+        "TTFT P50 (s)":          p50_ttft,
+        "TTFT P95 (s)":          p95_ttft,
+        "TTFT Max (s)":          max_ttft,
+        "TTFT Min (s)":          min_ttft,
+
+        # Throughput
+        "Throughput (in+out) tok/s": tp_total,
+        "Throughput (out) tok/s":    out_tp_total,
+        "Throughput (in) tok/s":     in_tp_total,
+
+        # Energy Efficiency
+        "Energy/Tok (in+out) J/1000": energy_tok_inout,
+        "Energy/Tok (out) J/1000":    energy_tok_out,
+        "Energy/Tok (in) J/1000":     energy_tok_in,
+    }
+    token_stats_df = pd.DataFrame(token_stats, index=[0])
+
+    # Concatenate all GPU profiler metrics with token/latency stats
+    aggregated_data = pd.concat([gpu_profile_df, token_stats_df], axis=1)
+
     return latency_data, aggregated_data
 
 # Legacy

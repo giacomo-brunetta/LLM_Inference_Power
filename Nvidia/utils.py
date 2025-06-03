@@ -56,7 +56,6 @@ def load_model(model_name, batch_size, dtype='bfloat16', tp = 1, pp = 1, ep = Fa
         distributed_executor_backend=None,
         enable_prefix_caching=False,
         disable_sliding_window=False,
-        # max_model_len = 10000,
     )
 
     return llm

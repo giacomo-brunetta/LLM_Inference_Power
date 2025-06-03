@@ -11,7 +11,7 @@ from vllm.distributed.parallel_state import (
     destroy_distributed_environment,
     destroy_model_parallel
 )
-from profiler_utils import gpuPowerProbe, PowerProfiler, metrics
+from profiler_utils import GPUProfiler, metrics
 import torch
 from utils import parse_arguments_single_run, load_model, save_results
 
@@ -83,8 +83,8 @@ results = llm.chat(
 print("Starting...")
 
 # Create and start the profiler
-power_profiler = PowerProfiler(gpus=torch.cuda.device_count(), active_gpus=args.tp*args.pp)
-power_profiler.start()
+gpu_profiler = GPUProfiler(gpus=torch.cuda.device_count(), active_gpus=args.tp*args.pp)
+gpu_profiler.start()
 
 # Do inference
 results = llm.chat(
@@ -92,12 +92,12 @@ results = llm.chat(
     sampling_params=sampling_params,
     use_tqdm=True
 )
-power_profiler.stop() # Stop the profiler
+gpu_profiler.stop() # Stop the profiler
 
 print("Finished.")
 
 # Use vLLM Logs and PowerProfiler data to get latency, ttft, throughput and power metrics
-latency_data, aggregated_data = metrics(results, power_profiler)
+latency_data, aggregated_data = metrics(results, gpu_profiler)
 
 # Save the latency results in CSV files
 latency_data.to_csv(f"../Results/Single_Runs/{model_name.split('/')[-1]}_tp{args.tp}_{args.pp}_bs{batch_size}.csv", index=True)
