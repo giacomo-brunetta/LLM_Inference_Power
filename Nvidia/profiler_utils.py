@@ -251,7 +251,7 @@ class GPUProfiler:
         active_mem_avg,      active_mem_peak,      active_mem_p50,      active_mem_p95      = self.get_stats(active_mem_used)
         total_mem_avg,       total_mem_peak,       total_mem_p50,       total_mem_p95       = self.get_stats(total_mem_used)
         active_gpu_util_avg, active_gpu_util_peak, active_gpu_util_p50, active_gpu_util_p95 = self.get_stats(active_gpu_util / self.active_gpus)
-        total_gpu_util_avg,  total_gpu_util_peak,  total_gpu_util_p50,  total_gpu_util_p95  = self.get_stats(total_gpu_util  / self)
+        total_gpu_util_avg,  total_gpu_util_peak,  total_gpu_util_p50,  total_gpu_util_p95  = self.get_stats(total_gpu_util  / self.gpus)
         active_mem_util_avg, active_mem_util_peak, active_mem_util_p50, active_mem_util_p95 = self.get_stats(active_mem_util / self.active_gpus)
         total_mem_util_avg,  total_mem_util_peak,  total_mem_util_p50,  total_mem_util_p95  = self.get_stats(total_mem_util  / self.gpus)
 
