@@ -183,20 +183,11 @@ class GPUProfiler:
 
             power_profile.destroy()
 
+    def get_stats(self, array):
+        return np.mean(array), np.max(array), np.percentile(array, 50), np.percentile(array, 95)
+
     def calculate_metrics(self, verbose=True):
-        power_avgs = []
-        power_peaks = []
-        energies = []
-
-        mem_avgs = []
-        mem_peaks = []
-        gpu_util_avgs = []
-        gpu_util_peaks = []
-        mem_util_avgs = []
-        mem_util_peaks = []
-
         total_power = None
-        active_power = None
 
         if verbose:
             print("\n---------------- Power & Memory -----------------------")
@@ -205,7 +196,7 @@ class GPUProfiler:
         min_sample_num = min([len(p) for p in self.inference_powers])
 
         for gpu_id in range(self.gpus):
-            power = self.inference_powers[gpu_id] / 1000  # convert µW → W
+            power = self.inference_powers[gpu_id] / 1000
             times = self.inference_powers_time[gpu_id]
             mem_used = self.inference_mem_used[gpu_id]
             gpu_util = self.inference_gpu_utils[gpu_id]
@@ -218,97 +209,62 @@ class GPUProfiler:
             gpu_util = gpu_util[:min_sample_num]
             mem_util = mem_util[:min_sample_num]
 
-            # Compute power metrics
-            avg_power = np.mean(power)
-            peak_power = np.max(power)
             energy = np.sum(power * times)
-
-            # Compute memory‐used metrics
-            avg_mem = np.mean(mem_used)
-            peak_mem = np.max(mem_used)
-
-            # Compute utilization metrics
-            avg_gpu_util = np.mean(gpu_util)
-            peak_gpu_util = np.max(gpu_util)
-            avg_mem_util = np.mean(mem_util)
-            peak_mem_util = np.max(mem_util)
 
             # Aggregate total & active power time series
             if total_power is None:
                 total_power = power.copy()
                 active_power = power.copy()
+                active_energy = energy
+                total_energy = energy
+                active_mem_used = mem_used.copy()
+                total_mem_used = mem_used.copy()
+                active_mem_util = mem_util.copy()/self.active_gpus
+                total_mem_util = mem_util.copy()/self.gpus
+                active_gpu_util = gpu_util.copy()/self.active_gpus
+                total_gpu_util = gpu_util.copy()/self.gpus
+
             elif gpu_id < self.active_gpus:
                 active_power += power
                 total_power += power
+                active_energy += energy
+                total_energy += energy
+                active_mem_used += mem_used
+                total_mem_used += mem_used
+                active_mem_util += mem_util / self.active_gpus
+                total_mem_util += mem_util / self.gpus
+                active_gpu_util += gpu_util / self.active_gpus
+                total_gpu_util += gpu_util / self.gpus
             else:
                 total_power += power
-
-            power_avgs.append(avg_power)
-            power_peaks.append(peak_power)
-            energies.append(energy)
-
-            mem_avgs.append(avg_mem)
-            mem_peaks.append(peak_mem)
-            gpu_util_avgs.append(avg_gpu_util)
-            gpu_util_peaks.append(peak_gpu_util)
-            mem_util_avgs.append(avg_mem_util)
-            mem_util_peaks.append(peak_mem_util)
+                total_energy += energy
+                total_mem_used += mem_used
+                total_mem_util += mem_util / self.gpus
+                total_gpu_util += gpu_util / self.gpus
 
             if verbose:
                 print(f"GPU {gpu_id}:")
-                print(f"    Power avg      : {avg_power: .3f} W")
-                print(f"    Power peak     : {peak_power: .3f} W")
+                print(f"    Power avg      : {np.mean(power): .3f} W")
+                print(f"    Power peak     : {np.max(power): .3f} W")
                 print(f"    Energy         : {energy: .3f} J")
-                print(f"    Memory used avg: {avg_mem: .3f} MiB")
-                print(f"    Memory used peak: {peak_mem: .3f} MiB")
-                print(f"    GPU util avg   : {avg_gpu_util: .2f} %")
-                print(f"    GPU util peak  : {peak_gpu_util: .2f} %")
-                print(f"    Mem util avg   : {avg_mem_util: .2f} %")
-                print(f"    Mem util peak  : {peak_mem_util: .2f} %")
-                print("")
+                print(f"    Memory avg     : {np.mean(mem_used): .3f} MiB")
+                print(f"    Memory peak    : {np.max(mem_used): .3f} MiB")
+                print(f"    GPU util avg   : {np.mean(gpu_util): .2f} %")
+                print(f"    GPU util peak  : {np.max(gpu_util): .2f} %")
 
         # Overall aggregated metrics
-        active_energy = sum(energies[: self.active_gpus])
-        total_energy = sum(energies)
-        active_power_avg = sum(power_avgs[: self.active_gpus])
-        avg_total_power = sum(power_avgs)
-        total_power_peak = np.max(total_power)
-        active_power_peak = np.max(active_power)
-
-        # Aggregate memory and utilization across active GPUs (averaging their averages)
-        active_mem_avg = np.mean(mem_avgs[: self.active_gpus])
-        active_mem_peak = max(mem_peaks[: self.active_gpus])
-        active_mem_p50 = np.percentile(mem_avgs[: self.active_gpus], 50)
-        active_mem_p95 = np.percentile(mem_avgs[: self.active_gpus], 95)
-
-        active_gpu_util_avg = np.mean(gpu_util_avgs[: self.active_gpus])
-        active_gpu_util_peak = max(gpu_util_peaks[: self.active_gpus])
-        active_gpu_util_p50 = np.percentile(gpu_util_avgs[: self.active_gpus], 50)
-        active_gpu_util_p95 = np.percentile(gpu_util_avgs[: self.active_gpus], 95)
-
-        active_mem_util_avg = np.mean(mem_util_avgs[: self.active_gpus])
-        active_mem_util_peak = max(mem_util_peaks[: self.active_gpus])
-        active_mem_util_p50 = np.percentile(mem_util_avgs[: self.active_gpus], 50)
-        active_mem_util_p95 = np.percentile(mem_util_avgs[: self.active_gpus], 95)
-
-        total_mem_avg = np.mean(mem_avgs)
-        total_mem_peak = max(mem_peaks)
-        total_mem_p50 = np.percentile(mem_avgs, 50)
-        total_mem_p95 = np.percentile(mem_avgs, 95)
-
-        total_gpu_util_avg = np.mean(gpu_util_avgs)
-        total_gpu_util_peak = max(gpu_util_peaks)
-        total_gpu_util_p50 = np.percentile(gpu_util_avgs, 50)
-        total_gpu_util_p95 = np.percentile(gpu_util_avgs, 95)
-
-        total_mem_util_avg = np.mean(mem_util_avgs)
-        total_mem_util_peak = max(mem_util_peaks)
-        total_mem_util_p50 = np.percentile(mem_util_avgs, 50)
-        total_mem_util_p95 = np.percentile(mem_util_avgs, 95)
+        active_power_avg, active_power_peak, active_power_p50, active_power_p95 = self.get_stats(active_power)
+        total_power_avg, total_power_peak, total_power_p50, total_power_p95 = self.get_stats(total_power)
+        active_mem_avg, active_mem_peak, active_mem_p50, active_mem_p95 = self.get_stats(active_mem_used)
+        total_mem_avg, total_mem_peak, total_mem_p50, total_mem_p95 = self.get_stats(total_mem_used)
+        active_gpu_util_avg, active_gpu_util_peak, active_gpu_util_p50, active_gpu_util_p95 = self.get_stats(active_gpu_util)
+        total_gpu_util_avg, total_gpu_util_peak, total_gpu_util_p50, total_gpu_util_p95 = self.get_stats(total_gpu_util)
+        active_mem_util_avg, active_mem_util_peak, active_mem_util_p50, active_mem_util_p95 = self.get_stats(active_mem_util)
+        total_mem_util_avg, total_mem_util_peak, total_mem_util_p50, total_mem_util_p95 = self.get_stats(total_mem_util)
 
         if verbose:
             print("Overall Total (all GPUs):")
-            print(f"    Power avg      : {avg_total_power: .3f} W")
+            print(f"    Power avg      : {total_power_avg: .3f} W")
             print(f"    Power peak     : {total_power_peak: .3f} W")
             print(f"    Energy         : {total_energy: .3f} J")
             print(f"    Memory avg     : {total_mem_avg: .3f} MiB ({total_mem_util_avg: .2f} %)")
@@ -327,37 +283,53 @@ class GPUProfiler:
             print()
     
         return {
+            # Energy
             "active_energy": active_energy,
             "total_energy": total_energy,
+
+            # Power (active GPUs)
             "active_power_avg": active_power_avg,
-            "avg_total_power": avg_total_power,
+            "active_power_peak": active_power_peak,
+            "active_power_p50": active_power_p50,
+            "active_power_p95": active_power_p95,
+
+            # Power (active + idle GPUs)
+            "total_power_avg": total_power_avg,
             "total_power_peak": total_power_peak,
-            "active_power_peak":  active_power_peak,
-            "active_mem_avg": active_mem_avg,
-            "active_mem_peak": active_mem_peak,
-            "active_mem_p50": active_mem_p50,
-            "active_mem_p95": active_mem_p95,
+            "total_power_p50": total_power_p50,
+            "total_power_p95": total_power_p95,
             
+            # Memory (active GPUs)
             "active_gpu_util_avg": active_gpu_util_avg,
             "active_gpu_util_peak": active_gpu_util_peak,
             "active_gpu_util_p50": active_gpu_util_p50,
             "active_gpu_util_p95": active_gpu_util_p95,
 
+            # Memory (active + idle GPUs)
             "active_mem_util_avg": active_mem_util_avg,
             "active_mem_util_peak": active_mem_util_peak,
             "active_mem_util_p50": active_mem_util_p50,
             "active_mem_util_p95": active_mem_util_p95,
 
+            # Memory (active GPUs)
+            "active_mem_avg": active_mem_avg,
+            "active_mem_peak": active_mem_peak,
+            "active_mem_p50": active_mem_p50,
+            "active_mem_p95": active_mem_p95,
+
+            # Memory (active + idle GPUs)
             "total_mem_avg": total_mem_avg,
             "total_mem_peak": total_mem_peak,
             "total_mem_p50": total_mem_p50,
             "total_mem_p95": total_mem_p95,
 
+            # GPU Utilization (active GPUs)
             "total_gpu_util_avg": total_gpu_util_avg,
             "total_gpu_util_peak": total_gpu_util_peak,
             "total_gpu_util_p50": total_gpu_util_p50,
             "total_gpu_util_p95": total_gpu_util_p95,
 
+            # GPU Utilization (active + idle GPUs)
             "total_mem_util_avg": total_mem_util_avg,
             "total_mem_util_peak": total_mem_util_peak,
             "total_mem_util_p50": total_mem_util_p50,
