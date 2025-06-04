@@ -327,6 +327,12 @@ class GPUProfiler:
             print()
     
         return {
+            "active_energy": active_energy,
+            "total_energy": total_energy,
+            "active_power_avg": active_power_avg,
+            "avg_total_power": avg_total_power,
+            "total_power_peak": total_power_peak,
+            "active_power_peak":  active_power_peak,
             "active_mem_avg": active_mem_avg,
             "active_mem_peak": active_mem_peak,
             "active_mem_p50": active_mem_p50,

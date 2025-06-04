@@ -1,6 +1,7 @@
 from datasets import load_dataset
 import time
 import csv
+import ray
 from tqdm import tqdm
 import os
 import numpy as np
@@ -94,14 +95,11 @@ results = llm.chat(
 )
 gpu_profiler.stop() # Stop the profiler
 
-print("Finished.")
-
-# Use vLLM Logs and PowerProfiler data to get latency, ttft, throughput and power metrics
+# Profiler data to get latency, ttft, throughput and power metrics
 latency_data, aggregated_data = metrics(results, gpu_profiler)
 
 # Save the latency results in CSV files
 latency_data.to_csv(f"../Results/Single_Runs/{model_name.split('/')[-1]}_tp{args.tp}_{args.pp}_bs{batch_size}.csv", index=True)
 save_results(args, aggregated_data, '../Results/dataset_inference_results.csv')
 
-destroy_model_parallel()
-destroy_distributed_environment()
+ray.shutdown()
