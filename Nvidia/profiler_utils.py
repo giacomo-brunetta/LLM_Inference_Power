@@ -196,18 +196,11 @@ class GPUProfiler:
         min_sample_num = min([len(p) for p in self.inference_powers])
 
         for gpu_id in range(self.gpus):
-            power    = self.inference_powers[gpu_id] / 1000
-            times    = self.inference_powers_time[gpu_id]
-            mem_used = self.inference_mem_used[gpu_id]
-            gpu_util = self.inference_gpu_utils[gpu_id]
-            mem_util = self.inference_mem_utils[gpu_id]
-
-            # Truncate to common length
-            power    = np.array(power[:min_sample_num])
-            times    = np.array(times[:min_sample_num])
-            mem_used = np.array(mem_used[:min_sample_num])
-            gpu_util = np.array(gpu_util[:min_sample_num])
-            mem_util = np.array(mem_util[:min_sample_num])
+            power    = np.array(self.inference_powers[gpu_id[:min_sample_num]]) / 1000
+            times    = np.array(self.inference_powers_time[gpu_id][:min_sample_num])
+            mem_used = np.array(self.inference_mem_used[gpu_id][:min_sample_num])
+            gpu_util = np.array(self.inference_gpu_utils[gpu_id][:min_sample_num])
+            mem_util = np.array(self.inference_mem_utils[gpu_id][:min_sample_num])
 
             energy = np.sum(power * times)
 
@@ -231,16 +224,16 @@ class GPUProfiler:
                 total_energy    += energy
                 active_mem_used += mem_used
                 total_mem_used  += mem_used
-                active_mem_util += mem_util / self.active_gpus
-                total_mem_util  += mem_util / self.gpus
-                active_gpu_util += gpu_util / self.active_gpus
-                total_gpu_util  += gpu_util / self.gpus
+                active_mem_util += mem_util
+                total_mem_util  += mem_util
+                active_gpu_util += gpu_util
+                total_gpu_util  += gpu_util
             else:
                 total_power     += power
                 total_energy    += energy
                 total_mem_used  += mem_used
-                total_mem_util  += mem_util / self.gpus
-                total_gpu_util  += gpu_util / self.gpus
+                total_mem_util  += mem_util
+                total_gpu_util  += gpu_util
 
             if verbose:
                 print(f"GPU {gpu_id}:")
@@ -253,25 +246,17 @@ class GPUProfiler:
                 print(f"    GPU util peak  : {np.max(gpu_util): .2f} %")
 
         # Overall aggregated metrics
-        active_power_avg, active_power_peak, active_power_p50, active_power_p95 = self.get_stats(active_power)
-        total_power_avg, total_power_peak, total_power_p50, total_power_p95 = self.get_stats(total_power)
-        active_mem_avg, active_mem_peak, active_mem_p50, active_mem_p95 = self.get_stats(active_mem_used)
-        total_mem_avg, total_mem_peak, total_mem_p50, total_mem_p95 = self.get_stats(total_mem_used)
-        active_gpu_util_avg, active_gpu_util_peak, active_gpu_util_p50, active_gpu_util_p95 = self.get_stats(active_gpu_util)
-        total_gpu_util_avg, total_gpu_util_peak, total_gpu_util_p50, total_gpu_util_p95 = self.get_stats(total_gpu_util)
-        active_mem_util_avg, active_mem_util_peak, active_mem_util_p50, active_mem_util_p95 = self.get_stats(active_mem_util)
-        total_mem_util_avg, total_mem_util_peak, total_mem_util_p50, total_mem_util_p95 = self.get_stats(total_mem_util)
+        active_power_avg,    active_power_peak,    active_power_p50,   active_power_p95     = self.get_stats(active_power)
+        total_power_avg,     total_power_peak,     total_power_p50,     total_power_p95     = self.get_stats(total_power)
+        active_mem_avg,      active_mem_peak,      active_mem_p50,      active_mem_p95      = self.get_stats(active_mem_used)
+        total_mem_avg,       total_mem_peak,       total_mem_p50,       total_mem_p95       = self.get_stats(total_mem_used)
+        active_gpu_util_avg, active_gpu_util_peak, active_gpu_util_p50, active_gpu_util_p95 = self.get_stats(active_gpu_util / self.active_gpus)
+        total_gpu_util_avg,  total_gpu_util_peak,  total_gpu_util_p50,  total_gpu_util_p95  = self.get_stats(total_gpu_util  / self)
+        active_mem_util_avg, active_mem_util_peak, active_mem_util_p50, active_mem_util_p95 = self.get_stats(active_mem_util / self.active_gpus)
+        total_mem_util_avg,  total_mem_util_peak,  total_mem_util_p50,  total_mem_util_p95  = self.get_stats(total_mem_util  / self.gpus)
 
         if verbose:
-            print("Overall Total (all GPUs):")
-            print(f"    Power avg      : {total_power_avg: .3f} W")
-            print(f"    Power peak     : {total_power_peak: .3f} W")
-            print(f"    Energy         : {total_energy: .3f} J")
-            print(f"    Memory avg     : {total_mem_avg: .3f} MiB ({total_mem_util_avg: .2f} %)")
-            print(f"    Memory peak    : {total_mem_peak: .3f} MiB ({total_mem_util_peak: .2f} %)")
-            print(f"    GPU util avg   : {total_gpu_util_avg: .2f} %")
-            print(f"    GPU util peak  : {total_gpu_util_peak: .2f} %")
-            print("")
+            print()
             print(f"Overall Active (first {self.active_gpus} GPU(s)):")
             print(f"    Power avg      : {active_power_avg: .3f} W")
             print(f"    Power peak     : {active_power_peak: .3f} W")
@@ -280,6 +265,15 @@ class GPUProfiler:
             print(f"    Memory peak    : {active_mem_peak: .3f} MiB ({active_mem_util_peak: .2f} %)")
             print(f"    GPU util avg   : {active_gpu_util_avg: .2f} %")
             print(f"    GPU util peak  : {active_gpu_util_peak: .2f} %")
+            print()
+            print("Overall Total (all GPUs):")
+            print(f"    Power avg      : {total_power_avg: .3f} W")
+            print(f"    Power peak     : {total_power_peak: .3f} W")
+            print(f"    Energy         : {total_energy: .3f} J")
+            print(f"    Memory avg     : {total_mem_avg: .3f} MiB ({total_mem_util_avg: .2f} %)")
+            print(f"    Memory peak    : {total_mem_peak: .3f} MiB ({total_mem_util_peak: .2f} %)")
+            print(f"    GPU util avg   : {total_gpu_util_avg: .2f} %")
+            print(f"    GPU util peak  : {total_gpu_util_peak: .2f} %")
             print()
     
         return {
