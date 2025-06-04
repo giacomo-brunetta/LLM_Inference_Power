@@ -196,7 +196,7 @@ class GPUProfiler:
         min_sample_num = min([len(p) for p in self.inference_powers])
 
         for gpu_id in range(self.gpus):
-            power    = np.array(self.inference_powers[gpu_id[:min_sample_num]]) / 1000
+            power    = np.array(self.inference_powers[gpu_id][:min_sample_num]) / 1000
             times    = np.array(self.inference_powers_time[gpu_id][:min_sample_num])
             mem_used = np.array(self.inference_mem_used[gpu_id][:min_sample_num])
             gpu_util = np.array(self.inference_gpu_utils[gpu_id][:min_sample_num])
