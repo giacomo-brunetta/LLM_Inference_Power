@@ -196,51 +196,51 @@ class GPUProfiler:
         min_sample_num = min([len(p) for p in self.inference_powers])
 
         for gpu_id in range(self.gpus):
-            power = self.inference_powers[gpu_id] / 1000
-            times = self.inference_powers_time[gpu_id]
+            power    = self.inference_powers[gpu_id] / 1000
+            times    = self.inference_powers_time[gpu_id]
             mem_used = self.inference_mem_used[gpu_id]
             gpu_util = self.inference_gpu_utils[gpu_id]
             mem_util = self.inference_mem_utils[gpu_id]
 
             # Truncate to common length
-            power = power[:min_sample_num]
-            times = times[:min_sample_num]
-            mem_used = mem_used[:min_sample_num]
-            gpu_util = gpu_util[:min_sample_num]
-            mem_util = mem_util[:min_sample_num]
+            power    = np.array(power[:min_sample_num])
+            times    = np.array(times[:min_sample_num])
+            mem_used = np.array(mem_used[:min_sample_num])
+            gpu_util = np.array(gpu_util[:min_sample_num])
+            mem_util = np.array(mem_util[:min_sample_num])
 
             energy = np.sum(power * times)
 
             # Aggregate total & active power time series
             if total_power is None:
-                total_power = power.copy()
-                active_power = power.copy()
-                active_energy = energy
-                total_energy = energy
+                total_power     = power.copy()
+                active_power    = power.copy()
+                active_energy   = energy
+                total_energy    = energy
                 active_mem_used = mem_used.copy()
-                total_mem_used = mem_used.copy()
+                total_mem_used  = mem_used.copy()
                 active_mem_util = mem_util.copy()/self.active_gpus
-                total_mem_util = mem_util.copy()/self.gpus
+                total_mem_util  = mem_util.copy()/self.gpus
                 active_gpu_util = gpu_util.copy()/self.active_gpus
-                total_gpu_util = gpu_util.copy()/self.gpus
+                total_gpu_util  = gpu_util.copy()/self.gpus
 
             elif gpu_id < self.active_gpus:
-                active_power += power
-                total_power += power
-                active_energy += energy
-                total_energy += energy
+                active_power    += power
+                total_power     += power
+                active_energy   += energy
+                total_energy    += energy
                 active_mem_used += mem_used
-                total_mem_used += mem_used
+                total_mem_used  += mem_used
                 active_mem_util += mem_util / self.active_gpus
-                total_mem_util += mem_util / self.gpus
+                total_mem_util  += mem_util / self.gpus
                 active_gpu_util += gpu_util / self.active_gpus
-                total_gpu_util += gpu_util / self.gpus
+                total_gpu_util  += gpu_util / self.gpus
             else:
-                total_power += power
-                total_energy += energy
-                total_mem_used += mem_used
-                total_mem_util += mem_util / self.gpus
-                total_gpu_util += gpu_util / self.gpus
+                total_power     += power
+                total_energy    += energy
+                total_mem_used  += mem_used
+                total_mem_util  += mem_util / self.gpus
+                total_gpu_util  += gpu_util / self.gpus
 
             if verbose:
                 print(f"GPU {gpu_id}:")
