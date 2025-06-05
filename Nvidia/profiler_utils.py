@@ -282,7 +282,7 @@ class GPUProfiler:
             "total_energy": total_energy,
 
             # Power (active GPUs)
-            "active_power_avg": active_power_avg,
+            "active_power_avg" : active_power_avg,
             "active_power_peak": active_power_peak,
             "active_power_p50": active_power_p50,
             "active_power_p95": active_power_p95,
@@ -431,9 +431,10 @@ def metrics(results, gpu_profiler, verbose=True):
         print(f"TTFT:  Avg: {mean_ttft:.3f} s,  P50: {p50_ttft:.3f} s,  P95: {p95_ttft:.3f} s,  Max: {max_ttft:.3f} s,  Min: {min_ttft:.3f} s")
         print()
 
-        print(f"Throughput: {tp_total:.2f} tok/s (in+out)")
-        print(f"  Out: {out_tp_total:.2f} tok/s")
-        print(f"  In : {in_tp_total:.2f} tok/s")
+        print(f"Throughput:")
+        print(f"In + Out: {tp_total:.2f} tok/s")
+        print(f"     Out: {out_tp_total:.2f} tok/s")
+        print(f"     In : {in_tp_total:.2f} tok/s")
         print()
 
         print("\n----------------Efficiency-----------------------")

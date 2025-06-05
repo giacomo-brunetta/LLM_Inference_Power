@@ -15,8 +15,9 @@ from vllm.distributed.parallel_state import (
 from profiler_utils import GPUProfiler, metrics
 import torch
 from utils import parse_arguments_single_run, load_model, save_results
-
+from transformers import AutoTokenizer
 import os
+
 os.environ["VLLM_USE_V1"] = "0" # Per-request profiling is not in v1 engine, so use v0
 def chat_len(chat):
     return sum([len(msg['content']) for msg in chat])
@@ -33,12 +34,15 @@ def processed_dataset(ds):
         input_chat = chat[:-1]
         output_chat = chat[-1]
 
-        in_len = chat_len(input_chat)
-        out_len = chat_len([output_chat])
+        in_len_char = chat_len(input_chat)
+        out_len_char = chat_len(output_chat)
 
         # Remove outliers that break models with maximum sequence length of 4096
-        if in_len > 20000 or in_len < 64 or out_len > 20000 or out_len < 64:
+        if in_len_char > 20000 or in_len_char < 64 or out_len_char > 20000 or out_len_char < 64:
             continue
+
+        out_tokens = tokenizer(output_chat)["input_ids"]
+        out_len = len(out_tokens)
 
         inputs.append(input_chat)
 
@@ -47,7 +51,7 @@ def processed_dataset(ds):
                     temperature= 1.0,
                     top_p=1.0,
                     ignore_eos=True,
-                    max_tokens= int(out_len/4), # Heuristic to go from lenght in characters to tokens
+                    max_tokens= out_len,
                 ))
         
     print(f"Loaded {len(inputs)} samples")
@@ -68,6 +72,8 @@ print(f"Batch size: {batch_size}")
 ds = load_dataset("lmsys/lmsys-chat-1m", split=f"train[0:1483]") # 1000 samples after outlier removal
 inputs, sampling_params = processed_dataset(ds)
 
+tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
+
 # Load the model
 torch._dynamo.config.suppress_errors = True
 
@@ -84,7 +90,7 @@ results = llm.chat(
 print("Starting...")
 
 # Create and start the profiler
-gpu_profiler = GPUProfiler(gpus=torch.cuda.device_count(), active_gpus=args.tp*args.pp)
+gpu_profiler = GPUProfiler(gpus=os.environ['NUM_GPUs'], active_gpus=args.tp*args.pp)
 gpu_profiler.start()
 
 # Do inference
