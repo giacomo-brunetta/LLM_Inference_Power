@@ -7,13 +7,13 @@ import time
 from vllm import LLM, SamplingParams
 import numpy as np
 from utils import parse_arguments, load_model, save_results
-from profiler_utils import PowerProfiler, metrics
+from profiler_utils import GPUProfiler, metrics
 import torch
 import traceback
 import sys
 
 import os
-os.environ["VLLM_USE_V1"] = "1"
+# os.environ["VLLM_USE_V1"] = "1"
 
 # Parse command-line arguments
 args = parse_arguments()
@@ -75,7 +75,7 @@ for batch_size in [1, 2, 4, 8, 16, 32, 64, 128]:
         } for batch in dummy_prompt_token_ids.tolist()]
 
         print("Measuring Latency")
-        power_profiler = PowerProfiler(gpus=torch.cuda.device_count(), active_gpus=args.pp*args.tp)
+        power_profiler = GPUProfiler(gpus=torch.cuda.device_count(), active_gpus=args.pp*args.tp)
 
         power_profiler.start()
 
@@ -85,6 +85,6 @@ for batch_size in [1, 2, 4, 8, 16, 32, 64, 128]:
 
         sampling_frequency = 0.5 #seconds
 
-        latency_data, aggregated_data = metrics(results, power_profiler, verbose=True)
+        # latency_data, aggregated_data = metrics(results, power_profiler, verbose=True)
 
-        save_results(args, aggregated_data, '../Results/syntethic_inference_results.csv', batch_size=batch_size)
+        # save_results(args, aggregated_data, '../Results/syntethic_inference_results.csv', batch_size=batch_size)

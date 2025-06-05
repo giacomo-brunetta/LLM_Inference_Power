@@ -1,6 +1,6 @@
 models=(
-    "Qwen/QwQ-32B"
-    "Qwen/Qwen3-32B"
+    # "Qwen/QwQ-32B"
+    # "Qwen/Qwen3-32B"
     "mistralai/Mistral-Small-3.1-24B-Instruct-2503"
     "google/gemma-2-27b-it"
 )

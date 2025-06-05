@@ -212,10 +212,10 @@ class GPUProfiler:
                 total_energy    = energy
                 active_mem_used = mem_used.copy()
                 total_mem_used  = mem_used.copy()
-                active_mem_util = mem_util.copy()/self.active_gpus
-                total_mem_util  = mem_util.copy()/self.gpus
-                active_gpu_util = gpu_util.copy()/self.active_gpus
-                total_gpu_util  = gpu_util.copy()/self.gpus
+                active_mem_util = mem_util.copy()
+                total_mem_util  = mem_util.copy()
+                active_gpu_util = gpu_util.copy()
+                total_gpu_util  = gpu_util.copy()
 
             elif gpu_id < self.active_gpus:
                 active_power    += power
@@ -246,7 +246,7 @@ class GPUProfiler:
                 print(f"    GPU util peak  : {np.max(gpu_util): .2f} %")
 
         # Overall aggregated metrics
-        active_power_avg,    active_power_peak,    active_power_p50,   active_power_p95     = self.get_stats(active_power)
+        active_power_avg,    active_power_peak,    active_power_p50,    active_power_p95    = self.get_stats(active_power)
         total_power_avg,     total_power_peak,     total_power_p50,     total_power_p95     = self.get_stats(total_power)
         active_mem_avg,      active_mem_peak,      active_mem_p50,      active_mem_p95      = self.get_stats(active_mem_used)
         total_mem_avg,       total_mem_peak,       total_mem_p50,       total_mem_p95       = self.get_stats(total_mem_used)
