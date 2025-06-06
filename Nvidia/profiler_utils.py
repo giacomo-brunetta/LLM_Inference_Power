@@ -33,7 +33,6 @@ class gpuPowerProbe(object):
         self.times = multiprocessing.Array('d', self.len)
         self.mem_used = multiprocessing.Array('d', self.len)
         self.gpu_utils = multiprocessing.Array('d', self.len)
-        self.mem_utils = multiprocessing.Array('d', self.len)
 
         self.gpu_id = multiprocessing.Value('i', gpu_id)
         self.process = None
@@ -44,7 +43,7 @@ class gpuPowerProbe(object):
         self.alive = multiprocessing.Value('i', 0)
         self.init()
 
-    def _getGpuPower(self, powers, times, mem_used, gpu_utils, mem_utils,
+    def _getGpuPower(self, powers, times, mem_used, gpu_utils,
                      gpu_id, count, halt, alive, isrunning, prevTime, interval):
         nvmlInit()
 
@@ -72,13 +71,10 @@ class gpuPowerProbe(object):
 
                 # --- Utilization measurement ---
                 gpu_util_sum = 0
-                mem_util_sum = 0
                 for h in handles:
                     util = nvmlDeviceGetUtilizationRates(h)
                     gpu_util_sum += util.gpu
-                    mem_util_sum += util.memory
                 avg_gpu_util = gpu_util_sum / len(handles)
-                avg_mem_util = mem_util_sum / len(handles)
 
                 # Wait until next interval
                 new_time = time.time()
@@ -91,7 +87,6 @@ class gpuPowerProbe(object):
                 times[idx] = new_time - prevTime.value
                 mem_used[idx] = total_mem_used
                 gpu_utils[idx] = avg_gpu_util
-                mem_utils[idx] = avg_mem_util
 
                 # Increment counter and update prevTime
                 count.value += 1
@@ -108,7 +103,6 @@ class gpuPowerProbe(object):
             self.times,
             self.mem_used,
             self.gpu_utils,
-            self.mem_utils,
             self.gpu_id,
             self.count,
             self.halt,
@@ -134,7 +128,6 @@ class gpuPowerProbe(object):
             'time_intervals': self.times[:self.count.value],
             'mem_used_mib': self.mem_used[:self.count.value],
             'gpu_util_pct': self.gpu_utils[:self.count.value],
-            'mem_util_pct': self.mem_utils[:self.count.value],
         }
 
     def destroy(self):
@@ -153,7 +146,6 @@ class GPUProfiler:
         self.inference_powers_time = []     # list of time‐interval arrays per GPU
         self.inference_mem_used = []        # list of memory‐used arrays (MiB) per GPU
         self.inference_gpu_utils = []       # list of GPU_util_pct arrays per GPU
-        self.inference_mem_utils = []       # list of memory_util_pct arrays per GPU
 
         # Instantiate one gpuPowerProbe per GPU
         self.power_profiles = [
@@ -173,14 +165,11 @@ class GPUProfiler:
             #   'time_intervals'  -> array of elapsed‐time between samples (s)
             #   'mem_used_mib'    -> array of total memory used (MiB)
             #   'gpu_util_pct'    -> array of average GPU utilization (%)
-            #   'mem_util_pct'    -> array of average memory utilization (%)
 
             self.inference_powers.append(np.array(stats['power']))
             self.inference_powers_time.append(np.array(stats['time_intervals']))
             self.inference_mem_used.append(np.array(stats['mem_used_mib']))
             self.inference_gpu_utils.append(np.array(stats['gpu_util_pct']))
-            self.inference_mem_utils.append(np.array(stats['mem_util_pct']))
-
             power_profile.destroy()
 
     def get_stats(self, array):
@@ -200,7 +189,6 @@ class GPUProfiler:
             times    = np.array(self.inference_powers_time[gpu_id][:min_sample_num])
             mem_used = np.array(self.inference_mem_used[gpu_id][:min_sample_num])
             gpu_util = np.array(self.inference_gpu_utils[gpu_id][:min_sample_num])
-            mem_util = np.array(self.inference_mem_utils[gpu_id][:min_sample_num])
 
             energy = np.sum(power * times)
 
@@ -212,8 +200,6 @@ class GPUProfiler:
                 total_energy    = energy
                 active_mem_used = mem_used.copy()
                 total_mem_used  = mem_used.copy()
-                active_mem_util = mem_util.copy()
-                total_mem_util  = mem_util.copy()
                 active_gpu_util = gpu_util.copy()
                 total_gpu_util  = gpu_util.copy()
 
@@ -224,15 +210,12 @@ class GPUProfiler:
                 total_energy    += energy
                 active_mem_used += mem_used
                 total_mem_used  += mem_used
-                active_mem_util += mem_util
-                total_mem_util  += mem_util
                 active_gpu_util += gpu_util
                 total_gpu_util  += gpu_util
             else:
                 total_power     += power
                 total_energy    += energy
                 total_mem_used  += mem_used
-                total_mem_util  += mem_util
                 total_gpu_util  += gpu_util
 
             if verbose:
@@ -251,9 +234,7 @@ class GPUProfiler:
         active_mem_avg,      active_mem_peak,      active_mem_p50,      active_mem_p95      = self.get_stats(active_mem_used)
         total_mem_avg,       total_mem_peak,       total_mem_p50,       total_mem_p95       = self.get_stats(total_mem_used)
         active_gpu_util_avg, active_gpu_util_peak, active_gpu_util_p50, active_gpu_util_p95 = self.get_stats(active_gpu_util / self.active_gpus)
-        total_gpu_util_avg,  total_gpu_util_peak,  total_gpu_util_p50,  total_gpu_util_p95  = self.get_stats(total_gpu_util  / self.gpus)
-        active_mem_util_avg, active_mem_util_peak, active_mem_util_p50, active_mem_util_p95 = self.get_stats(active_mem_util / self.active_gpus)
-        total_mem_util_avg,  total_mem_util_peak,  total_mem_util_p50,  total_mem_util_p95  = self.get_stats(total_mem_util  / self.gpus)
+        total_gpu_util_avg,  total_gpu_util_peak,  total_gpu_util_p50,  total_gpu_util_p95  = self.get_stats(total_gpu_util / self.gpus) 
 
         if verbose:
             print()
@@ -261,8 +242,8 @@ class GPUProfiler:
             print(f"    Power avg      : {active_power_avg: .3f} W")
             print(f"    Power peak     : {active_power_peak: .3f} W")
             print(f"    Energy         : {active_energy: .3f} J")
-            print(f"    Memory avg     : {active_mem_avg: .3f} MiB ({active_mem_util_avg: .2f} %)")
-            print(f"    Memory peak    : {active_mem_peak: .3f} MiB ({active_mem_util_peak: .2f} %)")
+            print(f"    Memory avg     : {active_mem_avg: .3f} MiB")
+            print(f"    Memory peak    : {active_mem_peak: .3f} MiB")
             print(f"    GPU util avg   : {active_gpu_util_avg: .2f} %")
             print(f"    GPU util peak  : {active_gpu_util_peak: .2f} %")
             print()
@@ -270,12 +251,12 @@ class GPUProfiler:
             print(f"    Power avg      : {total_power_avg: .3f} W")
             print(f"    Power peak     : {total_power_peak: .3f} W")
             print(f"    Energy         : {total_energy: .3f} J")
-            print(f"    Memory avg     : {total_mem_avg: .3f} MiB ({total_mem_util_avg: .2f} %)")
-            print(f"    Memory peak    : {total_mem_peak: .3f} MiB ({total_mem_util_peak: .2f} %)")
+            print(f"    Memory avg     : {total_mem_avg: .3f} MiB")
+            print(f"    Memory peak    : {total_mem_peak: .3f} MiB")
             print(f"    GPU util avg   : {total_gpu_util_avg: .2f} %")
             print(f"    GPU util peak  : {total_gpu_util_peak: .2f} %")
             print()
-    
+
         return {
             # Energy
             "active_energy": active_energy,
@@ -292,18 +273,12 @@ class GPUProfiler:
             "total_power_peak": total_power_peak,
             "total_power_p50": total_power_p50,
             "total_power_p95": total_power_p95,
-            
+
             # Memory (active GPUs)
             "active_gpu_util_avg": active_gpu_util_avg,
             "active_gpu_util_peak": active_gpu_util_peak,
             "active_gpu_util_p50": active_gpu_util_p50,
             "active_gpu_util_p95": active_gpu_util_p95,
-
-            # Memory (active + idle GPUs)
-            "active_mem_util_avg": active_mem_util_avg,
-            "active_mem_util_peak": active_mem_util_peak,
-            "active_mem_util_p50": active_mem_util_p50,
-            "active_mem_util_p95": active_mem_util_p95,
 
             # Memory (active GPUs)
             "active_mem_avg": active_mem_avg,
@@ -322,18 +297,12 @@ class GPUProfiler:
             "total_gpu_util_peak": total_gpu_util_peak,
             "total_gpu_util_p50": total_gpu_util_p50,
             "total_gpu_util_p95": total_gpu_util_p95,
-
-            # GPU Utilization (active + idle GPUs)
-            "total_mem_util_avg": total_mem_util_avg,
-            "total_mem_util_peak": total_mem_util_peak,
-            "total_mem_util_p50": total_mem_util_p50,
-            "total_mem_util_p95": total_mem_util_p95,
         }
 
 def metrics(results, gpu_profiler, verbose=True):
     # Get all GPU profiler metrics
     gpu_profile = gpu_profiler.calculate_metrics(verbose)
-    
+
     # get data from results
     ttfts = []
     latencies = []
