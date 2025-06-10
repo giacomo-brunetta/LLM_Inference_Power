@@ -1,7 +1,8 @@
 models=(
-    "Qwen/Qwen2-72B-Instruct"
-    "mistralai/Mixtral-8x7B-Instruct-v0.1"
+    #"Qwen/Qwen2-72B-Instruct"
+    #"mistralai/Mixtral-8x7B-Instruct-v0.1"
     "meta-llama/Llama-3.3-70B-Instruct"
+    "nvidia/Llama-3_3-Nemotron-Super-49B-v1"
 )
 
 for model in "${models[@]}"; do
