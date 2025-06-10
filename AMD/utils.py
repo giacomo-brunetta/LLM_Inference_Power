@@ -50,7 +50,6 @@ def load_model(model_name, batch_size, dtype='bfloat16', tp = 1, pp = 1, ep = 1)
         dtype=dtype,
         enforce_eager=True,
         kv_cache_dtype='auto',
-        device='cuda',
         block_size=16,
         enable_chunked_prefill=True,
         gpu_memory_utilization=0.95,
