@@ -18,9 +18,10 @@ def parse_arguments():
 def parse_arguments_single_run():
     parser = argparse.ArgumentParser(description="Run inference.")
     parser.add_argument("--batch_size", type=int, default=None, help="Batch size")
-    parser.add_argument("--tp", type=int, default=1, help="Gpus to be used in Tensor Parallelism")
-    parser.add_argument("--pp", type=int, default=1, help="Gpus to be used in Pipeline Parallelism")
-    parser.add_argument("--ep", type=int, default=1, help="Expert Parallelism")
+    parser.add_argument("--data_parallel","-dp", type=int, default=1, help="Gpus to be used in Data Parallelism")
+    parser.add_argument("--tensor_parallel", "-tp", type=int, default=1, help="Gpus to be used in Tensor Parallelism")
+    parser.add_argument("--pipeline_parallel", "-pp", type=int, default=1, help="Gpus to be used in Pipeline Parallelism")
+    parser.add_argument("--expert_parallel", "-ep", type=bool, default=False, help="Expert Parallelism")
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-2-7b-hf", help="Model")
     parser.add_argument("--power", action='store_true', help="Measure Power")
     parser.add_argument("--dtype", type=str, default='bfloat16')
@@ -33,7 +34,7 @@ def parse_arguments_single_run():
 
 # Constent model loading between runs
 
-def load_model(model_name, batch_size, dtype='bfloat16', tp = 1, pp = 1, ep = 1):
+def load_model(model_name, batch_size, dtype='bfloat16', tp = 1, pp = 1, ep = False, dp = 1):
     """
     Load the model using vLLM. The GPUs are set to be used in tensor parallelism.
     """
@@ -44,8 +45,8 @@ def load_model(model_name, batch_size, dtype='bfloat16', tp = 1, pp = 1, ep = 1)
         quantization=None,
         tensor_parallel_size = tp,
         pipeline_parallel_size=pp,
-        data_parallel_size=ep,
-        enable_expert_parallel= ep > 1,
+        data_parallel_size= dp,
+        enable_expert_parallel= ep,
         trust_remote_code=True,
         dtype=dtype,
         enforce_eager=True,
@@ -58,6 +59,7 @@ def load_model(model_name, batch_size, dtype='bfloat16', tp = 1, pp = 1, ep = 1)
         distributed_executor_backend=None,
         enable_prefix_caching=False,
         disable_sliding_window=False,
+        max_model_len=10000,
     )
 
     return llm

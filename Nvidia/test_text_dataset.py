@@ -98,8 +98,10 @@ if __name__ == "__main__":
     batch_size = args.batch_size
 
     print(f"Running {model_name}")
-    print(f"TP: {args.tp}")
-    print(f"PP: {args.pp}")
+    print(f"TP: {args.tensor_parallel}")
+    print(f"PP: {args.pipeline_parallel}")
+    print(f"EP: {args.expert_parallel}")
+    print(f"Data Parallel: {args.data_parallel}")
     print(f"Batch size: {batch_size}")
 
     # Load the dataset (we pick 1,483 so that after filtering we end up with 1,000)
@@ -109,7 +111,7 @@ if __name__ == "__main__":
 
     # Load the model
     torch._dynamo.config.suppress_errors = True
-    llm = load_model(model_name, batch_size, tp=args.tp, pp=args.pp, ep=args.ep, dtype=args.dtype)
+    llm = load_model(model_name, batch_size, tp=args.tensor_parallel, pp=args.pipeline_parallel, ep=args.expert_parallel, dp=args.data_parallel, dtype=args.dtype)
 
     # Warm‐up
     print("Warming up...")
@@ -122,7 +124,7 @@ if __name__ == "__main__":
     print("Starting...")
 
     # Create and start the profiler
-    gpu_profiler = GPUProfiler(gpus=int(os.environ['NUM_GPUs']), active_gpus=args.tp * args.pp)
+    gpu_profiler = GPUProfiler(gpus=int(os.environ['NUM_GPUs']), active_gpus=args.tensor_parallel * args.pipeline_parallel)
     gpu_profiler.start()
 
     # Do inference
@@ -138,7 +140,7 @@ if __name__ == "__main__":
 
     # Save the latency results in CSV files
     latency_data.to_csv(
-        f"../Results/Single_Runs/{model_name.split('/')[-1]}_tp{args.tp}_{args.pp}_bs{batch_size}.csv",
+        f"../Results/Single_Runs/{model_name.split('/')[-1]}_tp{args.tensor_parallel}_{args.pipeline_parallel}_bs{batch_size}{'_ep' if args.expert_parallel else ''}.csv",
         index=True
     )
     save_results(args, aggregated_data, '../Results/dataset_inference_results.csv')
