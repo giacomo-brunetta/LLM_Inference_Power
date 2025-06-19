@@ -3,6 +3,7 @@ import pandas as pd
 import os
 from vllm import LLM, SamplingParams
 import torch
+from transformers import AutoConfig
 
 # Argument parsing
 
@@ -38,29 +39,62 @@ def load_model(model_name, batch_size, dtype='bfloat16', tp = 1, pp = 1, ep = Fa
     """
     Load the model using vLLM. The GPUs are set to be used in tensor parallelism.
     """
-    llm = LLM(
-        model=model_name,
-        max_num_seqs = batch_size,
-        tokenizer=None,
-        quantization=None,
-        tensor_parallel_size = tp,
-        pipeline_parallel_size=pp,
-        data_parallel_size= dp,
-        enable_expert_parallel= ep,
-        trust_remote_code=True,
-        dtype=dtype,
-        enforce_eager=True,
-        kv_cache_dtype='auto',
-        device='cuda',
-        block_size=16,
-        enable_chunked_prefill=True,
-        gpu_memory_utilization=0.95,
-        load_format='auto',
-        distributed_executor_backend=None,
-        enable_prefix_caching=False,
-        disable_sliding_window=False,
-        max_model_len=10000,
+    config = AutoConfig.from_pretrained(model_name)
+    supported_max_len = (
+        config.max_position_embeddings
+        or config.model_max_length
+        or 0
     )
+
+    max_model_len = min(supported_max_len, 10000)
+    
+    if dtype == 'fp8':
+        llm = LLM(
+            model=model_name,
+            max_num_seqs = batch_size,
+            tokenizer=None,
+            quantization="fp8",
+            kv_cache_dtype="fp8",
+            tensor_parallel_size = tp,
+            pipeline_parallel_size=pp,
+            data_parallel_size= dp,
+            enable_expert_parallel= ep,
+            trust_remote_code=True,
+            enforce_eager=True,
+            device='cuda',
+            block_size=16,
+            enable_chunked_prefill=True,
+            gpu_memory_utilization=0.95,
+            load_format='auto',
+            distributed_executor_backend=None,
+            enable_prefix_caching=False,
+            disable_sliding_window=False,
+            max_model_len=max_model_len,
+        )
+    else:
+        llm = LLM(
+            model=model_name,
+            max_num_seqs = batch_size,
+            tokenizer=None,
+            quantization=None,
+            tensor_parallel_size = tp,
+            pipeline_parallel_size=pp,
+            data_parallel_size= dp,
+            enable_expert_parallel= ep,
+            trust_remote_code=True,
+            dtype=dtype,
+            enforce_eager=True,
+            kv_cache_dtype='auto',
+            device='cuda',
+            block_size=16,
+            enable_chunked_prefill=True,
+            gpu_memory_utilization=0.95,
+            load_format='auto',
+            distributed_executor_backend=None,
+            enable_prefix_caching=False,
+            disable_sliding_window=False,
+            max_model_len=max_model_len,
+        )
 
     return llm
 
@@ -70,9 +104,9 @@ def save_results(args, aggregated_data, path, batch_size = None):
     aggregated_data['Model Name'] = args.model_name
     aggregated_data['FrameWork'] = 'vLLM'
     aggregated_data['Hardware type'] = torch.cuda.get_device_name(torch.cuda.current_device())
-    aggregated_data['TP Size'] = args.tp
-    aggregated_data['PP Size'] = args.pp
-    aggregated_data['EP'] = args.ep
+    aggregated_data['TP Size'] = args.tensor_parallel
+    aggregated_data['PP Size'] = args.pipeline_parallel
+    aggregated_data['EP'] = args.expert_parallel
     if batch_size is not None:
         aggregated_data['Batch Size'] = batch_size
     else:

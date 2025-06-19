@@ -13,7 +13,7 @@ models=(
 for model in "${models[@]}"; do
     for tp in 1 2 4; do
         for batch_size in 16 32 64 128 -1; do
-            python test_text_dataset.py --model_name $model --tp $tp --batch_size $batch_size
+            python3 test_text_dataset.py --model_name $model -tp $tp --batch_size $batch_size
         done
     done
 done
