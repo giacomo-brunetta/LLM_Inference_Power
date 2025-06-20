@@ -1,0 +1,3 @@
+/LLM_Inference_Power/Intel/build/CMakeFiles/gpu_power.dir
+/LLM_Inference_Power/Intel/build/CMakeFiles/edit_cache.dir
+/LLM_Inference_Power/Intel/build/CMakeFiles/rebuild_cache.dir

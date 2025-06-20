@@ -1,0 +1,1 @@
+/usr/bin/c++ -fPIC -flto -shared  -o gpu_power.cpython-310-x86_64-linux-gnu.so CMakeFiles/gpu_power.dir/gpu_power_bindings.cpp.o  /usr/lib/x86_64-linux-gnu/libze_loader.so

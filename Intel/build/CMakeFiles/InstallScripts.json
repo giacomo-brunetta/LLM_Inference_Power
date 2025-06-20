@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/LLM_Inference_Power/Intel/build/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
