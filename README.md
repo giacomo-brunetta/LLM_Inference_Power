@@ -11,5 +11,3 @@
 |SambaNova SN30      |      |      |      |  660 |     |      |      |
 |Graphcore Bow Pod64 |      |      |      |  250 |     |      |      |
 |Habana Gaudi-1      |      |      |      |  150 |     |      |      |
-|AMD Versal VCK5000  |  12  |      |      |      |     |  145 | 150W |
-|AMD Alveo V70       |      |      |      |  202 |     |  404 |  75W |

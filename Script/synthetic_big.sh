@@ -4,7 +4,11 @@ models_70B=(
     "meta-llama/Llama-3.3-70B-Instruct"
 )
 
+set -euo pipefail
+
+platform="${1:-cuda}"
+
 for model in "${models_70B[@]}"; do
-    python3 synthetic_test.py --model_name $model --num_gpus 4 --power
+    python3 synthetic_test.py --model_name $model --num_gpus 4 --power --platform $platform
 done
  
