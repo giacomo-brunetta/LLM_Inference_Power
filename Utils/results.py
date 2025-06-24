@@ -258,6 +258,7 @@ def save_results(args, aggregated_data, path, batch_size = None):
     aggregated_data['TP Size'] = 1 if args.expert_parallel else args.tensor_parallel
     aggregated_data['PP Size'] = 1 if args.expert_parallel else args.pipeline_parallel
     aggregated_data['EP Size'] = args.tensor_parallel * args.pipeline_parallel if args.expert_parallel else 1
+    aggregated_data['DP Size'] = args.data_parallel
     aggregated_data['Precision'] = args.data_type
 
     if batch_size is not None:
