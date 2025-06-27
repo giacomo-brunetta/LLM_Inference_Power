@@ -1,9 +1,10 @@
 from datasets import load_dataset
 import os
-from Utils.parser import parse_arguments_single_run
+from Utils.parser import parse_arguments_KL
 from Utils.model import load_model
 from Utils.dataset import process_dataset
-from Utils.results import get_latency_data
+from Utils.results import save_results, metrics
+from Nvidia.profiler import Profiler
 import importlib
 import multiprocessing
 import time
@@ -55,7 +56,7 @@ def get_logprobs(llm, inputs, output1, output2):
 
 def workload(i, args, devices, input_slice, sampling_slice, gen_flags, done_flags, all_gen, results, logprobs):
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = devices
+    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(g) for g in devices)
 
     # Load the model
     llm = load_model(args.model_name,
@@ -68,6 +69,18 @@ def workload(i, args, devices, input_slice, sampling_slice, gen_flags, done_flag
     # Warm‐up
     print(f"LLM instance loaded on GPUs {devices}")
 
+    print("Warming up...")
+    _ = llm.chat(
+        inputs[-50:],
+        sampling_params=sampling_params[-50:],
+        use_tqdm=True
+    )
+
+    profiler = profiler(args, len(devices), watched_devices = devices)
+
+    print("Start profiling")
+    profiler.start()
+
     # Do inference
     _results = llm.chat(
         input_slice,
@@ -75,7 +88,10 @@ def workload(i, args, devices, input_slice, sampling_slice, gen_flags, done_flag
         use_tqdm=True
     )
 
-    _,_ = get_latency_data(_results)
+    profiler.stop()  # Stop the profiler
+
+    latency_data, aggregated_data = metrics(results, profiler)
+    save_results(args, aggregated_data, './Results/KL_results.csv')
     
     results[i] = _results
     gen_flags[i] = 1
@@ -97,7 +113,7 @@ def workload(i, args, devices, input_slice, sampling_slice, gen_flags, done_flag
     done_flags[i] = 1
 
 if __name__ == "__main__":
-    args = parse_arguments_single_run()
+    args = parse_arguments_KL()
 
     total_gpus = int(os.environ['NUM_GPUs'])
     gpus_per_device = total_gpus // 2
@@ -106,11 +122,10 @@ if __name__ == "__main__":
 
     args1 = copy.deepcopy(args)
     args2 = copy.deepcopy(args)
-    #args2.model_name = "RedHatAI/Meta-Llama-3.1-8B-Instruct-quantized.w8a8"
-    #args2.model_name = "RedHatAI/Meta-Llama-3.1-8B-Instruct-quantized.w4a16"
-    args1.model_name = "meta-llama/Llama-3.1-8B-Instruct"
-    args2.model_name = "meta-llama/Llama-3.1-8B-Instruct"
-    #args2.data_type  = "compressed"
+    args1.model_name = args.model_name1
+    args1.data_type = args.data_type1
+    args2.data_type = args.data_type1
+    args2.model_name = args.model_name2
 
     args = [args1, args2]
 
@@ -136,7 +151,7 @@ if __name__ == "__main__":
 
     # launch instances
     for i in range(2):
-        devices = ",".join(str(g) for g in range(gpus_per_device * i,  gpus_per_device * (i+1)))
+        devices = range(gpus_per_device * i,  gpus_per_device * (i+1))
 
         process_args = (
                 i, args[i],
