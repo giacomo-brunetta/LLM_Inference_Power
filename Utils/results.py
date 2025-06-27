@@ -82,10 +82,7 @@ def get_metrics_from_profiler(profiler, verbose=True):
         "total_gpu_util_p95": total_gpu_util_p95,
     }
 
-def metrics(results, gpu_profiler, verbose=True):
-    # Get all GPU profiler metrics
-    gpu_profile = get_metrics_from_profiler(gpu_profiler)
-
+def get_latency_data(results, verbose=True):
     # get data from results
     ttfts = []
     latencies = []
@@ -130,6 +127,8 @@ def metrics(results, gpu_profiler, verbose=True):
         "ttft": ttfts,
     })
 
+    latency_total = end - start
+
     # Compute summary statistics for tokens and latencies
     sum_in_tokens   = np.sum(input_tokens)
     mean_in_tokens  = np.mean(input_tokens)
@@ -145,7 +144,7 @@ def metrics(results, gpu_profiler, verbose=True):
     p50_out_tokens  = np.percentile(output_tokens, 50)
     p95_out_tokens  = np.percentile(output_tokens, 95)
 
-    latency_total = end - start
+    
     mean_latency = np.mean(latencies)
     max_latency  = np.max(latencies)
     min_latency  = np.min(latencies)
@@ -161,11 +160,6 @@ def metrics(results, gpu_profiler, verbose=True):
     tp_total = (sum_in_tokens + sum_out_tokens) / latency_total
     out_tp_total = sum_out_tokens / latency_total
     in_tp_total = sum_in_tokens / latency_total
-
-    # Compute energy efficiency per token (human‐readable)
-    energy_tok_inout = 1000 * gpu_profile['total_energy'] / (sum_in_tokens + sum_out_tokens)
-    energy_tok_out   = 1000 * gpu_profile['total_energy'] / sum_out_tokens
-    energy_tok_in    = 1000 * gpu_profile['total_energy'] / sum_in_tokens
 
     if verbose:
         print("\n----------------Tokens-----------------------")
@@ -187,18 +181,7 @@ def metrics(results, gpu_profiler, verbose=True):
         print(f"In + Out: {tp_total:.2f} tok/s")
         print(f"     Out: {out_tp_total:.2f} tok/s")
         print(f"     In : {in_tp_total:.2f} tok/s")
-        print()
 
-        print("\n----------------Efficiency-----------------------")
-        print(f"Energy/Tok (in+out): {energy_tok_inout:.3f} J / 1000 tok")
-        print(f"Energy/Tok (out):    {energy_tok_out:.3f} J / 1000 tok")
-        print(f"Energy/Tok (in):     {energy_tok_in:.3f} J / 1000 tok")
-        print()
-
-    # Build a one‐row DataFrame for all GPU profiler metrics
-    gpu_profile_df = pd.DataFrame({key: [value] for key, value in gpu_profile.items()})
-
-    # Build a one‐row DataFrame for token/latency stats
     token_stats = {
         # Input tokens
         "In Tokens Total":       sum_in_tokens,
@@ -235,12 +218,42 @@ def metrics(results, gpu_profiler, verbose=True):
         "Throughput (in+out) tok/s": tp_total,
         "Throughput (out) tok/s":    out_tp_total,
         "Throughput (in) tok/s":     in_tp_total,
-
-        # Energy Efficiency
-        "Energy/Tok (in+out) J/1000": energy_tok_inout,
-        "Energy/Tok (out) J/1000":    energy_tok_out,
-        "Energy/Tok (in) J/1000":     energy_tok_in,
     }
+    token_stats = pd.DataFrame(token_stats, index=[0])
+
+    return latency_data, token_stats
+
+def metrics(results, gpu_profiler, verbose=True):
+    # Get all GPU profiler metrics
+    gpu_profile = get_metrics_from_profiler(gpu_profiler)
+
+    latency_data, token_stats = get_latency_data(results)
+
+    # Compute energy efficiency per token (human‐readable)
+    sum_in_tokens = token_stats["In Tokens Total"][0]
+    sum_out_tokens = token_stats["Out Tokens Total"][0]
+
+    energy_tok_inout = 1000 * gpu_profile['total_energy'] / (sum_in_tokens + sum_out_tokens)
+    energy_tok_out   = 1000 * gpu_profile['total_energy'] / sum_out_tokens
+    energy_tok_in    = 1000 * gpu_profile['total_energy'] / sum_in_tokens
+
+    if verbose:
+        print()
+
+        print("\n----------------Efficiency-----------------------")
+        print(f"Energy/Tok (in+out): {energy_tok_inout:.3f} J / 1000 tok")
+        print(f"Energy/Tok (out):    {energy_tok_out:.3f} J / 1000 tok")
+        print(f"Energy/Tok (in):     {energy_tok_in:.3f} J / 1000 tok")
+        print()
+    
+    # Build a one‐row DataFrame for all GPU profiler metrics
+    gpu_profile_df = pd.DataFrame({key: [value] for key, value in gpu_profile.items()})
+
+    # Build a one‐row DataFrame for token/latency stats
+    token_stats["Energy/Tok (in+out) J/1000"] = energy_tok_inout
+    token_stats["Energy/Tok (out) J/1000"] = energy_tok_out
+    token_stats["Energy/Tok (in) J/1000"] = energy_tok_in
+
     token_stats_df = pd.DataFrame(token_stats, index=[0])
 
     # Concatenate all GPU profiler metrics with token/latency stats

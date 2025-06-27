@@ -14,6 +14,10 @@ def cap_max_model_len(model_name, value):
     )
     return min(supported_max_len, value)
 
+def get_vocab_size(model_name):
+    config = AutoConfig.from_pretrained(model_name)
+    return config.vocab_size
+
 def load_model(model_name, batch_size, dtype='bfloat16', tp = 1, pp = 1, ep = False, dp = 1, use_v1=False):
     """
     Load the model using vLLM. The GPUs are set to be used in tensor parallelism.
@@ -21,6 +25,7 @@ def load_model(model_name, batch_size, dtype='bfloat16', tp = 1, pp = 1, ep = Fa
     max_model_len = cap_max_model_len(model_name, 10000)
 
     print(f"Loading {model_name}")
+    print(f"Data Type         : {dtype}")
     print(f"Tensor Parallel   : {tp}")
     print(f"Pipeline Parallel : {pp}")
     print(f"Expert Parallel   : {ep}")
@@ -37,10 +42,9 @@ def load_model(model_name, batch_size, dtype='bfloat16', tp = 1, pp = 1, ep = Fa
             max_num_seqs = batch_size,
             tokenizer=None,
             quantization="fp8",
-            kv_cache_dtype="fp8",
+            kv_cache_dtype="auto",
             tensor_parallel_size = tp,
             pipeline_parallel_size=pp,
-            data_parallel_size= dp,
             enable_expert_parallel= ep,
             trust_remote_code=True,
             enforce_eager=True,
@@ -54,6 +58,30 @@ def load_model(model_name, batch_size, dtype='bfloat16', tp = 1, pp = 1, ep = Fa
             disable_sliding_window=False,
             max_model_len=max_model_len,
         )
+    
+    elif dtype == 'int8':
+        llm = LLM(
+            model=model_name,
+            max_num_seqs=batch_size,
+            tokenizer=None,
+            quantization="compressed-tensors",
+            kv_cache_dtype="auto",
+            tensor_parallel_size=tp,
+            pipeline_parallel_size=pp,
+            enable_expert_parallel=ep,
+            trust_remote_code=True,
+            enforce_eager=True,
+            device='cuda',
+            block_size=16,
+            enable_chunked_prefill=True,
+            gpu_memory_utilization=0.95,
+            load_format='auto',
+            distributed_executor_backend=None,
+            enable_prefix_caching=False,
+            disable_sliding_window=False,
+            max_model_len=max_model_len,
+        )
+
     else:
         llm = LLM(
             model=model_name,
@@ -62,7 +90,6 @@ def load_model(model_name, batch_size, dtype='bfloat16', tp = 1, pp = 1, ep = Fa
             quantization=None,
             tensor_parallel_size = tp,
             pipeline_parallel_size=pp,
-            data_parallel_size= dp,
             enable_expert_parallel= ep,
             trust_remote_code=True,
             dtype=dtype,
@@ -71,7 +98,7 @@ def load_model(model_name, batch_size, dtype='bfloat16', tp = 1, pp = 1, ep = Fa
             device='cuda',
             block_size=16,
             enable_chunked_prefill=True,
-            gpu_memory_utilization=0.95,
+            gpu_memory_utilization= 0.95,
             load_format='auto',
             distributed_executor_backend=None,
             enable_prefix_caching=False,

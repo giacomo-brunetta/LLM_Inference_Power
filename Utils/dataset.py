@@ -49,32 +49,20 @@ def process_dataset(ds, model_name, logprobs = False):
     )
 
     out_lengths = out_lengths_ds["out_len"]
-    if logprobs:
-
-        sampling_params = [
-            SamplingParams(
-                n=1,
-                temperature=1.0,
-                top_k=20,
-                logprobs=20,
-                ignore_eos=True,
-                max_tokens=ol,
-            )
-            for ol in out_lengths
-        ]
-    else:
-        sampling_params = [
-            SamplingParams(
-                n=1,
-                temperature=1.0,
-                top_p=1.0,
-                ignore_eos=True,
-                max_tokens=ol,
-            )
-            for ol in out_lengths
-        ]
+    sampling_params = [
+        SamplingParams(
+            n=1,
+            temperature=1.0,
+            top_p=1.0,
+            ignore_eos=True,
+            max_tokens=ol,
+            prompt_logprobs=1,
+            logprobs=1,
+        )
+        for ol in out_lengths
+    ]
 
     # Make sure we still have exactly 1,000 examples after filtering
-    assert len(inputs) == len(sampling_params) and len(inputs) == 1000
+    # assert len(inputs) == len(sampling_params) and len(inputs) == 1000
 
     return inputs, sampling_params

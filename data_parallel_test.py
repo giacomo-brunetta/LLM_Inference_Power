@@ -134,7 +134,7 @@ if __name__ == "__main__":
         processes.append(process)
 
     # Create and start the profiler
-    profiler = profiler(args, total_gpus)
+    profiler = profiler(args, gpus=total_gpus, active_gpus=total_gpus)
 
     while not all_ready.value == 1:
         if sum([flag for flag in ready_flags]) == args.data_parallel:
