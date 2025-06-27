@@ -177,10 +177,8 @@ def get_latency_data(results, verbose=True):
         print(f"TTFT:  Avg: {mean_ttft:.3f} s,  P50: {p50_ttft:.3f} s,  P95: {p95_ttft:.3f} s,  Max: {max_ttft:.3f} s,  Min: {min_ttft:.3f} s")
         print()
 
-        print(f"Throughput:")
-        print(f"In + Out: {tp_total:.2f} tok/s")
-        print(f"     Out: {out_tp_total:.2f} tok/s")
-        print(f"     In : {in_tp_total:.2f} tok/s")
+        print(f"Throughput:    (In+Out) : {tp_total:.2f} tok/s,   Out: {out_tp_total:.2f} tok/s,   In : {in_tp_total:.2f} tok/s")
+        print()
 
     token_stats = {
         # Input tokens

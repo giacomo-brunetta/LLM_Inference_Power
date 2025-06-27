@@ -53,7 +53,7 @@ def get_logprobs(llm, inputs, output1, output2):
 
     return logprobs1, logprobs2
 
-def workload(i, args, devices, input_slice, sampling_slice, gen_flags, done_flags, all_gen, results, logprobs):
+def workload(i, args, input_slice, sampling_slice, results, logprobs):
 
     os.environ["CUDA_VISIBLE_DEVICES"] = devices
 
@@ -108,8 +108,8 @@ if __name__ == "__main__":
     args2 = copy.deepcopy(args)
     #args2.model_name = "RedHatAI/Meta-Llama-3.1-8B-Instruct-quantized.w8a8"
     #args2.model_name = "RedHatAI/Meta-Llama-3.1-8B-Instruct-quantized.w4a16"
-    args1.model_name = "meta-llama/Llama-3.1-8B-Instruct"
-    args2.model_name = "meta-llama/Llama-3.1-8B-Instruct"
+    args1.model_name = "Qwen/Qwen3-8B"
+    args2.model_name = "Qwen/Qwen3-8B"
     #args2.data_type  = "compressed"
 
     args = [args1, args2]
@@ -120,57 +120,59 @@ if __name__ == "__main__":
 
     # Splitting dataset according to scaling type
 
-    input_slices =    [inputs]          * 2
-    sampling_slices = [sampling_params] * 2
-    
-    gen_flags  = multiprocessing.Array('i', 2)
-    done_flags = multiprocessing.Array('i', 2)
-    all_gen    = multiprocessing.Value('i', 0)
-    all_done   = multiprocessing.Value('i', 0)
 
-    manager   = multiprocessing.Manager()
-    results   = manager.list([ manager.list() for _ in range(2) ])
-    logprobs  = manager.list([ manager.list() for _ in range(2) ])
-    processes = []
-
-
-    # launch instances
     for i in range(2):
-        devices = ",".join(str(g) for g in range(gpus_per_device * i,  gpus_per_device * (i+1)))
+        # Load the model
+        llm = load_model(args[i].model_name,
+                     args[i].batch_size,
+                     tp=args[i].tensor_parallel,
+                     pp=args[i].pipeline_parallel,
+                     ep=args[i].expert_parallel,
+                     dtype=args[i].data_type)
 
-        process_args = (
-                i, args[i],
-                devices,
-                input_slices[i],
-                sampling_slices[i],
-                gen_flags,
-                done_flags,
-                all_gen,
-                results,
-                logprobs,
+
+        # Do inference
+        _results = llm.chat(
+                inputs,
+                sampling_params=sampling_params,
+                use_tqdm=True
             )
+
+        _,_ = get_latency_data(_results)
+
+        results[i] = _results
+    
+    for i in range(2):
+        # Load the model
+        llm = load_model(args[i].model_name,
+                     args[i].batch_size,
+                     tp=args[i].tensor_parallel,
+                     pp=args[i].pipeline_parallel,
+                     ep=args[i].expert_parallel,
+                     dtype=args[i].data_type)
         
-        process = multiprocessing.Process(target=workload, args=process_args)
+        i_other = 1 if i == 0 else 0
 
-        process.start()
-        processes.append(process)
+        logprobs0, logprobs1 = get_logprobs(llm, inputs, results[i], results[i_other])
 
-    # Create and start the profiler
+        logprobs[i].append(logprobs0)
+        logprobs[i].append(logprobs1)
 
+
+    # The process has the instance of the original model
     while not all_gen.value == 1:
-        if sum([flag for flag in gen_flags]) == 2:
-            all_gen.value = 1
-            print("All GPUs done with phase 1/2 (generation)")
-        else:
             time.sleep(0.1)
 
-    while not all_done.value == 1:
-        if sum([flag for flag in done_flags]) == 2:
-            all_done.value = 1
-            print("All GPUs done with phase 2/2 (KL estimation)")
-        else:
-            time.sleep(0.1)
-        
+    i_other = 1 if i == 0 else 0
+    other_results = results[i_other]
+
+    logprobs0, logprobs1 = get_logprobs(llm, inputs, _results, other_results)
+
+    logprobs[i].append(logprobs0)
+    logprobs[i].append(logprobs1)
+
+
+
     E0_p0 = logprobs[0][0]
     E0_p1 = logprobs[0][1]
     E1_p1 = logprobs[1][0]
@@ -185,6 +187,3 @@ if __name__ == "__main__":
     print("KL base  || quant) : ",KL_1)
     print("JS(quant || base ) : ",JSE)
     print("="*50)
-
-    for process in processes:
-        process.join()

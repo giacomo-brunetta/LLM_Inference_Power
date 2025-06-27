@@ -56,8 +56,6 @@ def process_dataset(ds, model_name, logprobs = False):
             top_p=1.0,
             ignore_eos=True,
             max_tokens=ol,
-            prompt_logprobs=1,
-            logprobs=1,
         )
         for ol in out_lengths
     ]
