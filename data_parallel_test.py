@@ -9,7 +9,7 @@ import multiprocessing
 import time
 import sys
 
-def profiler(args, gpus):
+def get_profiler(args, gpus):
     # map your “platform” names to the actual package folders
     _PLATFORM_MAP = {
         "cuda": "Nvidia",
@@ -28,14 +28,17 @@ def profiler(args, gpus):
 
     # grab the Profiler class and instantiate it
     return module.Profiler(
+        interval=0.5,
         gpus=gpus,
-        active_gpus=args.tensor_parallel * args.pipeline_parallel * args.data_parallel
+        active_gpus=gpus
     )
 
 def workload(i, args, devices, input_slice, sampling_slice, loaded_flags, ready_flags, done_flags, all_ready, results):
-
-    os.environ["CUDA_VISIBLE_DEVICES"] = devices
-
+    if args.platform == 'cuda':
+       os.environ["CUDA_VISIBLE_DEVICES"] = devices
+    else:
+        os.environ["HIP_VISIBLE_DEVICES"] = devices
+    
     # Load the model
     llm = load_model(args.model_name,
                      args.batch_size,
@@ -58,7 +61,7 @@ def workload(i, args, devices, input_slice, sampling_slice, loaded_flags, ready_
 
     print(f"GPUs {devices} ready")
 
-    while not all_ready.value == 1:
+    while all_ready.value == 0:
         time.sleep(0.1)
 
     # Do inference
@@ -104,6 +107,11 @@ if __name__ == "__main__":
     done_flags   = multiprocessing.Array('i', args.data_parallel)
     all_ready    = multiprocessing.Value('i', 0)
     all_done     = multiprocessing.Value('i', 0)
+    
+    for i in range(args.data_parallel):
+        loaded_flags[i] = 0
+        ready_flags[i] = 0
+        done_flags[i] = 0
 
     manager = multiprocessing.Manager()
     results = manager.list([None] * args.data_parallel)
@@ -130,13 +138,17 @@ if __name__ == "__main__":
         
         process = multiprocessing.Process(target=workload, args=process_args)
 
+        print("starting process")
         process.start()
         processes.append(process)
 
-    # Create and start the profiler
-    profiler = profiler(args, gpus=total_gpus, active_gpus=total_gpus)
 
-    while not all_ready.value == 1:
+    # Create and start the profiler
+    profiler = get_profiler(args, total_gpus)
+
+    print("Profiler created")
+
+    while all_ready.value == 0:
         if sum([flag for flag in ready_flags]) == args.data_parallel:
             all_ready.value = 1
             print("All GPUs ready. Starting Profiling.")
@@ -144,7 +156,7 @@ if __name__ == "__main__":
         else:
             time.sleep(0.1)
 
-    while not all_done.value == 1:
+    while all_done.value == 0:
         if sum([flag for flag in done_flags]) == args.data_parallel:
             all_done.value = 1
             profiler.stop()

@@ -1,0 +1,24 @@
+Jobid: 891185
+qsub -I -t 360 -n 1 -q gpu_h100
+Mon Jun 30 14:31:50 2025 +0000 (UTC) submitted with cwd set to: /home/gbrunetta/LLM_Inference_Power
+jobid 891185 submitted from terminal /dev/pts/26
+Mon Jun 30 14:32:07 2025 +0000 (UTC) 
+Mon Jun 30 14:32:07 2025 +0000 (UTC) Command: '/usr/bin/ssh' 'hopper00' '/usr/libexec/cobalt/cobalt-launcher.py' '--nf' '/var/tmp/cobalt.891185' '--jobid' '891185' '--cwd' '/home/gbrunetta/LLM_Inference_Power' '--env' 'COBALT_JOBID=891185' '/bin/sleep' '21600'
+Mon Jun 30 14:32:07 2025 +0000 (UTC) 
+Mon Jun 30 14:32:07 2025 +0000 (UTC) Environment:
+Mon Jun 30 14:32:07 2025 +0000 (UTC) SHELL=/bin/bash
+Mon Jun 30 14:32:07 2025 +0000 (UTC) COBALT_NODEFILE=/tmp/tmplVETpa
+Mon Jun 30 14:32:07 2025 +0000 (UTC) COBALT_PARTNAME=hopper00
+Mon Jun 30 14:32:07 2025 +0000 (UTC) COBALT_JOBID=891185
+Mon Jun 30 14:32:07 2025 +0000 (UTC) COBALT_STARTTIME=1751293916
+Mon Jun 30 14:32:07 2025 +0000 (UTC) LOGNAME=gbrunetta
+Mon Jun 30 14:32:07 2025 +0000 (UTC) USER=gbrunetta
+Mon Jun 30 14:32:07 2025 +0000 (UTC) COBALT_ENDTIME=1751315516
+Mon Jun 30 14:32:07 2025 +0000 (UTC) COBALT_PARTSIZE=1
+Mon Jun 30 14:32:07 2025 +0000 (UTC) HOME=/home/gbrunetta
+Mon Jun 30 14:32:07 2025 +0000 (UTC) COBALT_JOBSIZE=1
+Mon Jun 30 14:32:07 2025 +0000 (UTC) 
+Mon Jun 30 14:32:07 2025 +0000 (UTC) Info: stdin received from /dev/null
+Mon Jun 30 14:32:07 2025 +0000 (UTC) Info: stdout sent to /home/gbrunetta/LLM_Inference_Power/891185.output
+Mon Jun 30 14:32:07 2025 +0000 (UTC) Info: stderr sent to /home/gbrunetta/LLM_Inference_Power/891185.error
+Mon Jun 30 14:32:07 2025 +0000 (UTC) 

@@ -4,14 +4,38 @@ from Utils.parser import parse_arguments_KL
 from Utils.model import load_model
 from Utils.dataset import process_dataset
 from Utils.results import save_results, metrics
-from Nvidia.profiler import Profiler
+from vllm import SamplingParams
+import numpy as np
+import copy
 import importlib
 import multiprocessing
 import time
 import sys
-from vllm import SamplingParams
-import numpy as np
-import copy
+
+def get_profiler(args, gpus, devices):
+    # map your platform names to the actual package folders
+    _PLATFORM_MAP = {
+        "cuda": "Nvidia",
+        "rocm": "AMD",
+        "xpu":  "Intel",
+        #"hpu":  "Habana",
+    }
+
+    try:
+        pkg_name = _PLATFORM_MAP[args.platform]
+    except KeyError:
+        raise ValueError(f"Platform {args.platform!r} not supported")
+
+    # dynamically import the vendor-specific profiler submodule
+    module = importlib.import_module(f"{pkg_name}.profiler")
+
+    # grab the Profiler class and instantiate it
+    return module.Profiler(
+        interval=0.5,
+        gpus=gpus,
+        active_gpus=gpus,
+        watched_devices=devices,
+    )
 
 def concat(input, answers):
     return [i + [{"content": o.outputs[0].text, "role": "assistant"}] for i,o in zip(input,answers)]
@@ -66,7 +90,7 @@ def workload(i, args, devices, input_slice, sampling_slice, gen_flags, done_flag
                      ep=args.expert_parallel,
                      dtype=args.data_type)
     
-    # Warm‐up
+    # Warm up
     print(f"LLM instance loaded on GPUs {devices}")
 
     print("Warming up...")
@@ -76,7 +100,9 @@ def workload(i, args, devices, input_slice, sampling_slice, gen_flags, done_flag
         use_tqdm=True
     )
 
-    profiler = profiler(args, len(devices), watched_devices = devices)
+    total_gpus = int(os.environ['NUM_GPUs'])
+
+    profiler = get_profiler(args, gpus=total_gpus, devices=devices)
 
     print("Start profiling")
     profiler.start()
@@ -89,10 +115,12 @@ def workload(i, args, devices, input_slice, sampling_slice, gen_flags, done_flag
     )
 
     profiler.stop()  # Stop the profiler
+    try:
+        latency_data, aggregated_data = metrics(results, profiler)
+        save_results(args, aggregated_data, './Results/KL_results.csv')
+    except Exception as e:
+        raise
 
-    latency_data, aggregated_data = metrics(results, profiler)
-    save_results(args, aggregated_data, './Results/KL_results.csv')
-    
     results[i] = _results
     gen_flags[i] = 1
 
@@ -122,10 +150,10 @@ if __name__ == "__main__":
 
     args1 = copy.deepcopy(args)
     args2 = copy.deepcopy(args)
-    args1.model_name = args.model_name1
-    args1.data_type = args.data_type1
-    args2.data_type = args.data_type1
-    args2.model_name = args.model_name2
+    args1.model_name = args.model_name_1
+    args1.data_type = args.data_type_1
+    args2.data_type = args.data_type_1
+    args2.model_name = args.model_name_2
 
     args = [args1, args2]
 
@@ -135,8 +163,8 @@ if __name__ == "__main__":
 
     # Splitting dataset according to scaling type
 
-    input_slices =    [inputs]          * 2
-    sampling_slices = [sampling_params] * 2
+    input_slices =    [inputs]           * 2
+    sampling_slices = [sampling_params ] * 2
     
     gen_flags  = multiprocessing.Array('i', 2)
     done_flags = multiprocessing.Array('i', 2)
@@ -151,7 +179,7 @@ if __name__ == "__main__":
 
     # launch instances
     for i in range(2):
-        devices = range(gpus_per_device * i,  gpus_per_device * (i+1))
+        devices = list(range(gpus_per_device * i,  gpus_per_device * (i+1)))
 
         process_args = (
                 i, args[i],
@@ -196,8 +224,8 @@ if __name__ == "__main__":
     JSE = 0.5 * (KL_0 + KL_1)
 
     print("="*50)
-    print("KL quant || base ) : ",KL_0)
-    print("KL base  || quant) : ",KL_1)
+    print("KL(quant || base ) : ",KL_0)
+    print("KL(base  || quant) : ",KL_1)
     print("JS(quant || base ) : ",JSE)
     print("="*50)
 

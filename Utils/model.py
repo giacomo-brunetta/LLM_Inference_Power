@@ -6,13 +6,16 @@ from transformers import AutoConfig
 # Constent model loading between runs
 
 def cap_max_model_len(model_name, value):
-    config = AutoConfig.from_pretrained(model_name)
-    supported_max_len = (
-        config.max_position_embeddings
-        or config.model_max_length
-        or 0
-    )
-    return min(supported_max_len, value)
+    try:
+       config = AutoConfig.from_pretrained(model_name)
+       supported_max_len = (
+           config.max_position_embeddings
+           or config.model_max_length
+           or 0
+       )
+       return min(supported_max_len, value)
+    except:
+       return value
 
 def get_vocab_size(model_name):
     config = AutoConfig.from_pretrained(model_name)

@@ -1,0 +1,26 @@
+Jobid: 890950
+qsub -I -t 360 -n 1 -q gpu_h100
+Mon Jun 30 04:06:21 2025 +0000 (UTC) submitted with cwd set to: /home/gbrunetta/LLM_Inference_Power
+jobid 890950 submitted from terminal /dev/pts/17
+Mon Jun 30 04:06:38 2025 +0000 (UTC) 
+Mon Jun 30 04:06:38 2025 +0000 (UTC) Command: '/usr/bin/ssh' 'hopper00' '/usr/libexec/cobalt/cobalt-launcher.py' '--nf' '/var/tmp/cobalt.890950' '--jobid' '890950' '--cwd' '/home/gbrunetta/LLM_Inference_Power' '--env' 'COBALT_JOBID=890950' '/bin/sleep' '21600'
+Mon Jun 30 04:06:38 2025 +0000 (UTC) 
+Mon Jun 30 04:06:38 2025 +0000 (UTC) Environment:
+Mon Jun 30 04:06:38 2025 +0000 (UTC) SHELL=/bin/bash
+Mon Jun 30 04:06:38 2025 +0000 (UTC) COBALT_NODEFILE=/tmp/tmpwnnJRs
+Mon Jun 30 04:06:38 2025 +0000 (UTC) COBALT_PARTNAME=hopper00
+Mon Jun 30 04:06:38 2025 +0000 (UTC) COBALT_JOBID=890950
+Mon Jun 30 04:06:38 2025 +0000 (UTC) COBALT_STARTTIME=1751256382
+Mon Jun 30 04:06:38 2025 +0000 (UTC) LOGNAME=gbrunetta
+Mon Jun 30 04:06:38 2025 +0000 (UTC) USER=gbrunetta
+Mon Jun 30 04:06:38 2025 +0000 (UTC) COBALT_ENDTIME=1751277982
+Mon Jun 30 04:06:38 2025 +0000 (UTC) COBALT_PARTSIZE=1
+Mon Jun 30 04:06:38 2025 +0000 (UTC) HOME=/home/gbrunetta
+Mon Jun 30 04:06:38 2025 +0000 (UTC) COBALT_JOBSIZE=1
+Mon Jun 30 04:06:38 2025 +0000 (UTC) 
+Mon Jun 30 04:06:38 2025 +0000 (UTC) Info: stdin received from /dev/null
+Mon Jun 30 04:06:38 2025 +0000 (UTC) Info: stdout sent to /home/gbrunetta/LLM_Inference_Power/890950.output
+Mon Jun 30 04:06:38 2025 +0000 (UTC) Info: stderr sent to /home/gbrunetta/LLM_Inference_Power/890950.error
+Mon Jun 30 04:06:38 2025 +0000 (UTC) 
+Mon Jun 30 10:06:29 2025 +0000 (UTC) Info: maximum execution time exceeded; initiating job termination
+Mon Jun 30 10:06:45 2025 +0000 (UTC) Info: job is in the process of exiting; user delete request ignored

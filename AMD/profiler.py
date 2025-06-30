@@ -109,20 +109,25 @@ class gpuPowerProbe(object):
 import numpy as np
 
 class Profiler:
-    def __init__(self, interval=0.5, gpus=1, active_gpus=1):
+    def __init__(self, interval=0.5, gpus=1, active_gpus=1, watched_devices=None):
         self.gpus = gpus
         self.active_gpus = active_gpus
 
-        # Lists to collect per‐GPU time series
+        # Lists to collect per GPU time series
         self.inference_powers = []          # list of power arrays (µW) per GPU
-        self.inference_powers_time = []     # list of time‐interval arrays per GPU
-        self.inference_mem_used = []        # list of memory‐used arrays (MiB) per GPU
+        self.inference_powers_time = []     # list of time� interval arrays per GPU
+        self.inference_mem_used = []        # list of memory used arrays (MiB) per GPU
         self.inference_gpu_utils = []       # list of GPU_util_pct arrays per GPU
+
+        if watched_devices is None:
+            self.devices = list(range(gpus))
+        else:
+            self.devices = watched_devices
 
         # Instantiate one gpuPowerProbe per GPU
         self.power_profiles = [
             gpuPowerProbe(interval=interval, gpu_id=gpu_id)
-            for gpu_id in range(self.gpus)
+            for gpu_id in self.devices
         ]
 
     def start(self):
@@ -152,8 +157,13 @@ class Profiler:
 
         # Find the minimum number of samples across GPUs for alignment
         min_sample_num = min([len(p) for p in self.inference_powers])
+        print("print min len",min_sample_num)
 
         for gpu_id in range(self.gpus):
+            print("lenght of samplings: ", len(self.inference_powers[gpu_id]))
+            assert len(self.inference_powers[gpu_id]) == len(self.inference_powers_time[gpu_id])
+            assert len(self.inference_powers[gpu_id]) == len(self.inference_mem_used[gpu_id])
+            assert len(self.inference_powers[gpu_id]) == len(self.inference_gpu_utils[gpu_id])
             power    = np.array(self.inference_powers[gpu_id][:min_sample_num]) / 1000
             times    = np.array(self.inference_powers_time[gpu_id][:min_sample_num])
             mem_used = np.array(self.inference_mem_used[gpu_id][:min_sample_num])
@@ -196,5 +206,4 @@ class Profiler:
                 print(f"    Memory peak    : {np.max(mem_used): .3f} MiB")
                 print(f"    GPU util avg   : {np.mean(gpu_util): .2f} %")
                 print(f"    GPU util peak  : {np.max(gpu_util): .2f} %")
-        
-        return active_power, total_power, active_mem_used, total_mem_used, active_gpu_util / self.active_gpus, total_gpu_util / self.gpus
+        return active_power, total_power, active_mem_used, total_mem_used, active_gpu_util / self.active_gpus, total_gpu_util / self.gpus, active_energy, total_energy

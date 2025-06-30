@@ -154,7 +154,7 @@ class Profiler:
         # Instantiate one gpuPowerProbe per GPU
         self.power_profiles = [
             gpuPowerProbe(interval=interval, gpu_id=gpu_id)
-            for gpu_id in watched_devices
+            for gpu_id in self.watched_devices
         ]
 
     def start(self):
