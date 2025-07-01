@@ -34,9 +34,8 @@ def get_profiler(args, gpus):
     )
 
 def workload(i, args, devices, input_slice, sampling_slice, loaded_flags, ready_flags, done_flags, all_ready, results):
-    if args.platform == 'cuda':
-       os.environ["CUDA_VISIBLE_DEVICES"] = devices
-    else:
+    os.environ["CUDA_VISIBLE_DEVICES"] = devices
+    if args.platform == 'rocm':
         os.environ["HIP_VISIBLE_DEVICES"] = devices
     
     # Load the model
