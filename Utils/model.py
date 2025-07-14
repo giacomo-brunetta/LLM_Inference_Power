@@ -21,7 +21,7 @@ def get_vocab_size(model_name):
     config = AutoConfig.from_pretrained(model_name)
     return config.vocab_size
 
-def load_model(model_name, batch_size, dtype='bfloat16', tp = 1, pp = 1, ep = False, dp = 1, use_v1=False):
+def load_model(model_name, batch_size, dtype='bfloat16', tp = 1, pp = 1, ep = False, dp = 1, use_v1=False, memory_util=0.9, ray = False):
     """
     Load the model using vLLM. The GPUs are set to be used in tensor parallelism.
     """
@@ -55,11 +55,12 @@ def load_model(model_name, batch_size, dtype='bfloat16', tp = 1, pp = 1, ep = Fa
             trust_remote_code=True,
             enforce_eager=False,
             device='cuda',
+            max_num_batched_tokens=512,
             block_size=16,
             enable_chunked_prefill=True,
-            gpu_memory_utilization=0.9,
+            gpu_memory_utilization=memory_util,
             load_format='auto',
-            distributed_executor_backend=None,
+            distributed_executor_backend= 'ray' if ray else None,
             enable_prefix_caching=False,
             disable_sliding_window=False,
             max_model_len=max_model_len,
@@ -78,11 +79,12 @@ def load_model(model_name, batch_size, dtype='bfloat16', tp = 1, pp = 1, ep = Fa
             trust_remote_code=True,
             enforce_eager=False,
             device='cuda',
+            max_num_batched_tokens=512,
             block_size=16,
             enable_chunked_prefill=True,
-            gpu_memory_utilization=0.9,
+            gpu_memory_utilization=memory_util,
             load_format='auto',
-            distributed_executor_backend=None,
+            distributed_executor_backend='ray' if ray else None,
             enable_prefix_caching=False,
             disable_sliding_window=False,
             max_model_len=max_model_len,
@@ -102,10 +104,11 @@ def load_model(model_name, batch_size, dtype='bfloat16', tp = 1, pp = 1, ep = Fa
             enforce_eager=False,
             device='cuda',
             block_size=16,
+            max_num_batched_tokens=512,
             enable_chunked_prefill=True,
-            gpu_memory_utilization=0.9,
+            gpu_memory_utilization=memory_util,
             load_format='auto',
-            distributed_executor_backend=None,
+            distributed_executor_backend='ray' if ray else None,
             enable_prefix_caching=False,
             disable_sliding_window=False,
             max_model_len=max_model_len,
@@ -126,10 +129,11 @@ def load_model(model_name, batch_size, dtype='bfloat16', tp = 1, pp = 1, ep = Fa
             kv_cache_dtype='auto',
             device='cuda',
             block_size=16,
+            max_num_batched_tokens=512,
             enable_chunked_prefill=True,
-            gpu_memory_utilization= 0.9,
+            gpu_memory_utilization= memory_util,
             load_format='auto',
-            distributed_executor_backend=None,
+            distributed_executor_backend='ray' if ray else None,
             enable_prefix_caching=False,
             disable_sliding_window=False,
             max_model_len=max_model_len,

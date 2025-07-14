@@ -12,8 +12,8 @@ platform="${1:-cuda}"
 export NUM_GPUs=8
 
 model="deepseek-ai/DeepSeek-R1-0528"
-for tp_size in 8; do
-	for batch_size in 128 -1; do
+for tp_size in 4 8; do
+	for batch_size in 16 32 64 128 -1; do
    		python3 test_text_dataset.py --model_name $model -tp $tp_size --batch_size $batch_size -dtype fp8 --platform $platform
    		python3 test_text_dataset.py --model_name $model -tp $tp_size --batch_size $batch_size -dtype fp8 -ep True --platform $platform
 	done

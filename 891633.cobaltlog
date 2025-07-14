@@ -1,5 +1,0 @@
-Jobid: 891633
-qsub -I -t 360 -n 1 -q gpu_h100
-Tue Jul 01 20:39:07 2025 +0000 (UTC) submitted with cwd set to: /home/gbrunetta/LLM_Inference_Power
-jobid 891633 submitted from terminal /dev/pts/31
-Tue Jul 01 20:42:49 2025 +0000 (UTC) Info: user delete requested; removing job from the queue
