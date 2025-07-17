@@ -1,4 +1,4 @@
--euo pipefail
+set -euo pipefail
 
 platform="${1:-cuda}"
 

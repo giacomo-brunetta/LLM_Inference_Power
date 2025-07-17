@@ -11,47 +11,6 @@ import importlib
 import multiprocessing
 import time
 import sys
-import contextlib
-import gc
-import torch
-from vllm.distributed import destroy_distributed_environment, destroy_model_parallel
-import pandas as pd
-
-def report_divergences(model1, model2, data_type_1, data_type_2, kl_2_to_1, kl_1_to_2, js, csv_path = "./Results/KL_divergence.csv"):
-     row = {
-            "model1": model1,
-            "model2": model2,
-            "data1": data_type_1,
-            "data2": data_type_2,
-            "KL(2→1)": kl_2_to_1,
-            "KL(1→2)": kl_1_to_2,
-            "JS": js,
-            }
-    
-     if os.path.isfile(csv_path):
-        df = pd.read_csv(csv_path)
-     else:
-        df = pd.DataFrame(columns=row.keys())
-    
-     if df is None:
-        df = pd.DataFrame(columns=row.keys())
-
-     df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
-
-     # Print out the values
-     print(f"KL({data_type_2} || {data_type_1}) : {kl_2_to_1}")
-     print(f"KL({data_type_1} || {data_type_2}) : {kl_1_to_2}")
-     print(f"JS({data_type_1} || {data_type_2}) : {js}")
-
-     df.to_csv(csv_path, index=False)
-     
-def cleanup():
-    destroy_model_parallel()
-    destroy_distributed_environment()
-    with contextlib.suppress(AssertionError):
-         torch.distributed.destroy_process_group()
-         gc.collect()
-         torch.cuda.empty_cache()
 
 def get_profiler(args, gpus, devices):
     # map your platform names to the actual package folders
@@ -105,12 +64,12 @@ def get_logprobs(llm, inputs, output1, output2):
     # concat messages according to OpenAI chat format
     io1 = concat(inputs, output1)
     io2 = concat(inputs, output2)
-    
-    v1_fw_pass = llm.chat(io1,
+
+    v1_fw_pass = llm.chat( io1,
                   sampling_params = one_token,
                   use_tqdm=True)
     
-    v2_fw_pass = llm.chat(io2,
+    v2_fw_pass = llm.chat( io2,
                   sampling_params = one_token,
                   use_tqdm=True)
     
@@ -134,9 +93,16 @@ def workload(i, args, devices, input_slice, sampling_slice, gen_flags, done_flag
     # Warm up
     print(f"LLM instance loaded on GPUs {devices}")
 
+    print("Warming up...")
+    _ = llm.chat(
+        inputs[-50:],
+        sampling_params=sampling_params[-50:],
+        use_tqdm=True
+    )
+
     total_gpus = int(os.environ['NUM_GPUs'])
 
-    profiler = get_profiler(args, gpus=total_gpus//2, devices=devices)
+    profiler = get_profiler(args, gpus=total_gpus, devices=devices)
 
     print("Start profiling")
     profiler.start()
@@ -150,7 +116,7 @@ def workload(i, args, devices, input_slice, sampling_slice, gen_flags, done_flag
 
     profiler.stop()  # Stop the profiler
     try:
-        latency_data, aggregated_data = metrics(_results, profiler)
+        latency_data, aggregated_data = metrics(results, profiler)
         save_results(args, aggregated_data, './Results/KL_results.csv')
     except Exception as e:
         raise
@@ -160,10 +126,14 @@ def workload(i, args, devices, input_slice, sampling_slice, gen_flags, done_flag
 
     print(f"GPUs {devices} Done")
 
+    # The process has the instance of the original model
     while not all_gen.value == 1:
             time.sleep(0.1)
 
-    logprobs0, logprobs1 = get_logprobs(llm, inputs, results[0], results[1])
+    i_other = 1 if i == 0 else 0
+    other_results = results[i_other]
+    
+    logprobs0, logprobs1 = get_logprobs(llm, inputs, _results, other_results)
 
     logprobs[i].append(logprobs0)
     logprobs[i].append(logprobs1)
@@ -182,7 +152,7 @@ if __name__ == "__main__":
     args2 = copy.deepcopy(args)
     args1.model_name = args.model_name_1
     args1.data_type = args.data_type_1
-    args2.data_type = args.data_type_2
+    args2.data_type = args.data_type_1
     args2.model_name = args.model_name_2
 
     args = [args1, args2]
@@ -243,21 +213,21 @@ if __name__ == "__main__":
             print("All GPUs done with phase 2/2 (KL estimation)")
         else:
             time.sleep(0.1)
-    
-    # Evaluated with model 1
-    gen1_eval1 = logprobs[0][0] # generated with model 1
-    gen2_eval1 = logprobs[0][1] # generated with model 2
-    # Evaluated with model 2
-    gen1_eval2 = logprobs[1][0] # generated with model 1
-    gen2_eval2 = logprobs[1][1] # generated with model 2
+        
+    E0_p0 = logprobs[0][0]
+    E0_p1 = logprobs[0][1]
+    E1_p1 = logprobs[1][0]
+    E1_p0 = logprobs[1][1]
 
-    kl_1_to_2 = np.mean(gen1_eval1 - gen2_eval1)
-    kl_2_to_1 =  np.mean(gen2_eval2 - gen1_eval2)
-    
-    JSE = (kl_1_to_2 + kl_2_to_1) / 2
+    KL_0 = np.mean(E0_p0 - E0_p1)
+    KL_1 = np.mean(E1_p0 - E1_p1)
+    JSE = 0.5 * (KL_0 + KL_1)
 
-    report_divergences(args[0].model_name, args[1].model_name, args[0].data_type, args[1].data_type, kl_2_to_1, kl_1_to_2, JSE)
+    print("="*50)
+    print("KL(quant || base ) : ",KL_0)
+    print("KL(base  || quant) : ",KL_1)
+    print("JS(quant || base ) : ",JSE)
+    print("="*50)
 
     for process in processes:
         process.join()
-    cleanup()

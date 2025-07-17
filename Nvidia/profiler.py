@@ -188,7 +188,7 @@ class Profiler:
         # Find the minimum number of samples across GPUs for alignment
         min_sample_num = min([len(p) for p in self.inference_powers])
 
-        for gpu_id in range(self.gpus):
+        for gpu_id in self.watched_devices:
             power    = np.array(self.inference_powers[gpu_id][:min_sample_num]) / 1000
             times    = np.array(self.inference_powers_time[gpu_id][:min_sample_num])
             mem_used = np.array(self.inference_mem_used[gpu_id][:min_sample_num])
@@ -223,7 +223,7 @@ class Profiler:
                 total_gpu_util  += gpu_util
 
             if verbose:
-                print(f"GPU {self.watched_devices[gpu_id]}:")
+                print(f"GPU {gpu_id}:")
                 print(f"    Power avg      : {np.mean(power): .3f} W")
                 print(f"    Power peak     : {np.max(power): .3f} W")
                 print(f"    Energy         : {energy: .3f} J")

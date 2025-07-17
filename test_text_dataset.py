@@ -5,7 +5,6 @@ from Utils.model import load_model
 from Utils.dataset import process_dataset
 from Utils.results import save_results, metrics
 import importlib
-import ray
 
 def profiler(args, gpus):
     # map your “platform” names to the actual package folders
@@ -39,9 +38,6 @@ if __name__ == "__main__":
 
     model_name = args.model_name
     batch_size = args.batch_size
-    
-    if args.backend == 'ray':
-        ray.init(address="auto")
 
     # Load the dataset (we pick 1,483 so that after filtering we end up with 1,000)
     ds = load_dataset("lmsys/lmsys-chat-1m", split="train[0:1483]")
@@ -53,9 +49,7 @@ if __name__ == "__main__":
                      pp=args.pipeline_parallel,
                      ep=args.expert_parallel,
                      dp=args.data_parallel,
-                     dtype=args.data_type,
-                     memory_util=args.memory_util,
-                     ray = args.backend == 'ray')
+                     dtype=args.data_type)
 
     # Warm‐up
     print("Warming up...")
