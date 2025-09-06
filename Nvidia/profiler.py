@@ -216,6 +216,7 @@ class Profiler:
                 total_mem_used  += mem_used
                 active_gpu_util += gpu_util
                 total_gpu_util  += gpu_util
+                
             else:
                 total_power     += power
                 total_energy    += energy
